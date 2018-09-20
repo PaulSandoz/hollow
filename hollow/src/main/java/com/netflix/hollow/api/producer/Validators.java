@@ -23,8 +23,8 @@ public class Validators {
         /**
          * The validation passed.
          *
-         * @@@ Skipping might be consired a sub-state of PASSED with details in ValidationResult
          */
+         // @@@ Skipping might be consired a sub-state of PASSED with details in ValidationResult
         PASSED,
         /**
          * The validation failed.
@@ -37,8 +37,7 @@ public class Validators {
     }
 
     /**
-     * A result of a {@link Validator}.
-     *
+     * A result of a {@link ValidatorListener}.
      */
     public static final class ValidationResult {
         private final ValidationResultType type;
@@ -47,7 +46,7 @@ public class Validators {
         private final String message;
         private final Map<String, String> details;
 
-        public ValidationResult(
+        ValidationResult(
                 ValidationResultType type,
                 String name,
                 Throwable ex,
@@ -92,7 +91,7 @@ public class Validators {
             return type == ValidationResultType.PASSED;
         }
 
-        public static ValidationResultBuilder name(Validator v) {
+        public static ValidationResultBuilder name(ValidatorListener v) {
             return name(v.getName());
         }
 
@@ -102,15 +101,15 @@ public class Validators {
 
         static public class ValidationResultBuilder {
             private final String name;
-            private final Map<String, String> details;
+            private Map<String, String> details;
 
             ValidationResultBuilder(String name) {
                 this.name = name;
                 this.details = new HashMap<>();
             }
 
-            public ValidationResultBuilder detail(String name, String value) {
-                details.put(name, value);
+            public ValidationResultBuilder detail(String name, Object value) {
+                details.put(name, String.valueOf(value));
                 return this;
             }
 
@@ -125,7 +124,7 @@ public class Validators {
             }
 
             public ValidationResult passed(String message) {
-                return new ValidationResult(
+                return build(
                         ValidationResultType.PASSED,
                         name,
                         null,
@@ -135,7 +134,7 @@ public class Validators {
             }
 
             public ValidationResult failed(String message) {
-                return new ValidationResult(
+                return build(
                         ValidationResultType.FAILED,
                         name,
                         null,
@@ -145,13 +144,27 @@ public class Validators {
             }
 
             public ValidationResult error(Throwable t) {
-                return new ValidationResult(
+                return build(
                         ValidationResultType.FAILED,
                         name,
                         t,
                         t.getMessage(),
                         details
                 );
+            }
+
+            private ValidationResult build(
+                    ValidationResultType type,
+                    String name,
+                    Throwable ex,
+                    String message,
+                    Map<String, String> details) {
+                reset();
+                return new ValidationResult(type, name, ex, message, details);
+            }
+
+            private void reset() {
+                this.details = new HashMap<>();
             }
         }
     }
@@ -161,7 +174,7 @@ public class Validators {
      */
     // Any exception thrown will result in a ValidationResult instance with that exception
     // A validator should return a result with an error+exception if more information should be produced
-    public interface Validator extends EventListener {
+    public interface ValidatorListener extends EventListener {
         /**
          * Gets the name of the validator.
          *
@@ -173,7 +186,7 @@ public class Validators {
          * Called when validation is to be performed on read state.
          * <p>
          * If the a {@link RuntimeException} is thrown by the validator then validation is considered
-         * to fail with the result of a validation {@Link ValidationResultType#ERROR error}.
+         * to fail with the result of a validation {@link ValidationResultType#ERROR error}.
          *
          * @param readState the read state.
          * @return a validation result
@@ -200,10 +213,6 @@ public class Validators {
 
         public List<ValidationResult> getResults() {
             return results;
-        }
-
-        ValidationStatusException createValidationException() {
-            return passed ? null : new ValidationStatusException(this);
         }
     }
 
@@ -239,7 +248,7 @@ public class Validators {
     // Conversion between old and new validator API
     //
 
-    static final class ValidatorProxy implements Validator {
+    static final class ValidatorProxy implements ValidatorListener {
         com.netflix.hollow.api.producer.HollowProducer.Validator hollowValidator;
 
         ValidatorProxy(com.netflix.hollow.api.producer.HollowProducer.Validator hollowValidator) {
@@ -259,6 +268,7 @@ public class Validators {
             try {
                 hollowValidator.validate(readState);
             } catch (Throwable t) {
+                // @@@ Catch throwable for compatibility
                 caught = t;
             }
             return createValidationResult(hollowValidator, caught);
@@ -310,7 +320,11 @@ public class Validators {
         List<Throwable> exceptions = new ArrayList<>();
         for (Validators.ValidationResult r : e.getValidationStatus().getResults()) {
             if (!r.isPassed()) {
-                exceptions.add(r.getThrowable());
+                Throwable t = r.getThrowable();
+                if (t == null) {
+                    t = new HollowProducer.Validator.ValidationException(r.getMessage());
+                }
+                exceptions.add(t);
             }
         }
         return new HollowProducer.Validator.ValidationException(

@@ -38,6 +38,8 @@ public class ListenerSupportTest {
     @Mock
     private HollowValidationListener validationListener;
     @Mock
+    private Validators.ValidationStatusListener validationStatusListener;
+    @Mock
     private ProducerAndValidationListener producerAndValidationListener;
 
     @Before
@@ -46,6 +48,7 @@ public class ListenerSupportTest {
         listenerSupport = new ListenerSupport();
         listenerSupport.add(listener);
         listenerSupport.add(validationListener);
+        listenerSupport.add(validationStatusListener);
         listenerSupport.add((HollowValidationListener) producerAndValidationListener);
         listenerSupport.add((HollowProducerListenerV2) producerAndValidationListener);
     }
@@ -58,6 +61,7 @@ public class ListenerSupportTest {
         listenerSupport.fireValidationStart(readState);
         Mockito.verify(listener).onValidationStart(version);
         Mockito.verify(validationListener).onValidationStart(version);
+        Mockito.verify(validationStatusListener).onValidationStatusStart(version);
         Mockito.verify(producerAndValidationListener).onValidationStart(version);
     }
 
@@ -69,6 +73,19 @@ public class ListenerSupportTest {
         Mockito.doThrow(RuntimeException.class).when(validationListener).onValidationStart(version);
         listenerSupport.fireValidationStart(readState);
         Mockito.verify(listener).onValidationStart(version);
+        Mockito.verify(validationStatusListener).onValidationStatusStart(version);
+        Mockito.verify(producerAndValidationListener).onValidationStart(version);
+    }
+
+    @Test
+    public void testFireValidationStartDontStopWhenOneFails2() {
+        long version = 31337;
+        HollowProducer.ReadState readState = Mockito.mock(HollowProducer.ReadState.class);
+        Mockito.when(readState.getVersion()).thenReturn(version);
+        Mockito.doThrow(RuntimeException.class).when(validationStatusListener).onValidationStatusStart(version);
+        listenerSupport.fireValidationStart(readState);
+        Mockito.verify(listener).onValidationStart(version);
+        Mockito.verify(validationStatusListener).onValidationStatusStart(version);
         Mockito.verify(producerAndValidationListener).onValidationStart(version);
     }
 

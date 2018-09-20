@@ -49,6 +49,8 @@ final class ListenerSupport {
     private final Set<HollowProducerListener> listeners;
     private final Set<HollowValidationListener> hollowValidationListeners;
     private final Set<Validators.ValidationStatusListener> validationStatusListeners;
+    // @@@ package access for now
+    final Set<Validators.ValidatorListener> validators;
 
     // @@@ This is used only by HollowIncrementalProducer, and should be
     // separated out
@@ -58,6 +60,7 @@ final class ListenerSupport {
         listeners = new CopyOnWriteArraySet<>();
         hollowValidationListeners = new CopyOnWriteArraySet<>();
         validationStatusListeners = new CopyOnWriteArraySet<>();
+        validators = new CopyOnWriteArraySet<>();
         incrementalCycleListeners = new CopyOnWriteArraySet<>();
     }
 
@@ -73,11 +76,27 @@ final class ListenerSupport {
         if (listener instanceof Validators.ValidationStatusListener) {
             add((Validators.ValidationStatusListener) listener);
         }
+
+        if (listener instanceof Validators.ValidatorListener) {
+            add((Validators.ValidatorListener) listener);
+        }
     }
 
     void removeListener(EventListener listener) {
         if (listener instanceof HollowProducerListener) {
             remove((HollowProducerListener) listener);
+        }
+
+        if (listener instanceof HollowValidationListener) {
+            remove((HollowValidationListener) listener);
+        }
+
+        if (listener instanceof Validators.ValidationStatusListener) {
+            remove((Validators.ValidationStatusListener) listener);
+        }
+
+        if (listener instanceof Validators.ValidatorListener) {
+            remove((Validators.ValidatorListener) listener);
         }
     }
 
@@ -93,12 +112,28 @@ final class ListenerSupport {
         validationStatusListeners.add(listener);
     }
 
+    void add(Validators.ValidatorListener listener) {
+        validators.add(listener);
+    }
+
     void add(IncrementalCycleListener listener) {
         incrementalCycleListeners.add(listener);
     }
 
     void remove(HollowProducerListener listener) {
         listeners.remove(listener);
+    }
+
+    void remove(HollowValidationListener listener) {
+        hollowValidationListeners.remove(listener);
+    }
+
+    void remove(Validators.ValidationStatusListener listener) {
+        validationStatusListeners.remove(listener);
+    }
+
+    void remove(Validators.ValidatorListener listener) {
+        validators.remove(listener);
     }
 
     void remove(IncrementalCycleListener listener) {

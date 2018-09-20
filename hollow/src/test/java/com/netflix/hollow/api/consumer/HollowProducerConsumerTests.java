@@ -24,6 +24,7 @@ import com.netflix.hollow.api.producer.HollowProducer.Validator;
 import com.netflix.hollow.api.producer.HollowProducer.Validator.ValidationException;
 import com.netflix.hollow.api.producer.HollowProducer.VersionMinter;
 import com.netflix.hollow.api.producer.HollowProducer.WriteState;
+import com.netflix.hollow.api.producer.Validators;
 import com.netflix.hollow.api.producer.fs.HollowInMemoryBlobStager;
 import com.netflix.hollow.core.read.engine.object.HollowObjectTypeReadState;
 import com.netflix.hollow.tools.compact.HollowCompactor.CompactionConfig;
@@ -266,7 +267,30 @@ public class HollowProducerConsumerTests {
             Assert.assertEquals("Expected to fail!", expected.getIndividualFailures().get(0).getMessage());
         }
     }
-    
+
+    @Test
+    public void producerValidatesNew() {
+        HollowProducer producer = HollowProducer.withPublisher(blobStore)
+                .withBlobStager(new HollowInMemoryBlobStager())
+                .withListener(new Validators.ValidatorListener() {
+                    @Override public String getName() {
+                        return "Test validator";
+                    }
+                    @Override public Validators.ValidationResult onValidate(ReadState readState) {
+                        return Validators.ValidationResult.name(this).failed("Expected to fail!");
+                    }
+                })
+                .build();
+
+        try {
+            runCycle(producer, 1);
+            Assert.fail();
+        } catch(ValidationException expected) {
+            Assert.assertEquals(1, expected.getIndividualFailures().size());
+            Assert.assertEquals("Expected to fail!", expected.getIndividualFailures().get(0).getMessage());
+        }
+    }
+
     @Test
     public void producerCanContinueAfterValidationFailure() {
         HollowProducer producer = HollowProducer.withPublisher(blobStore)
@@ -292,7 +316,41 @@ public class HollowProducerConsumerTests {
         
         runCycle(producer, 3);
     }
-    
+
+    @Test
+    public void producerCanContinueAfterValidationFailureNew() {
+        HollowProducer producer = HollowProducer.withPublisher(blobStore)
+                .withBlobStager(new HollowInMemoryBlobStager())
+                .withListener(new Validators.ValidatorListener() {
+                    int counter=0;
+
+                    @Override public String getName() {
+                        return "Test validator";
+                    }
+
+                    @Override public Validators.ValidationResult onValidate(ReadState readState) {
+                        if(++counter == 2) {
+                            return Validators.ValidationResult.name(this).failed("Expected to fail!");
+                        } else {
+                            return Validators.ValidationResult.name(this).passed();
+                        }
+                    }
+                })
+                .build();
+
+        runCycle(producer, 1);
+
+        try {
+            runCycle(producer, 2);
+            Assert.fail();
+        } catch(ValidationException expected) {
+            Assert.assertEquals(1, expected.getIndividualFailures().size());
+            Assert.assertEquals("Expected to fail!", expected.getIndividualFailures().get(0).getMessage());
+        }
+
+        runCycle(producer, 3);
+    }
+
     @Test
     public void producerCompacts() {
         HollowProducer producer = HollowProducer.withPublisher(blobStore)

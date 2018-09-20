@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  *
  * @author lkanchanapalli {@literal<lavanya65@yahoo.com>}
  */
-public class DuplicateDataDetectionValidatorNew implements Validators.Validator {
+public class DuplicateDataDetectionValidatorNew implements Validators.ValidatorListener {
     private static final String DUPLICATE_KEYS_FOUND_ERRRO_MSG_FORMAT =
             "Duplicate keys found for type %s. Primarykey in schema is %s. "
                     + "Duplicate IDs are: %s";

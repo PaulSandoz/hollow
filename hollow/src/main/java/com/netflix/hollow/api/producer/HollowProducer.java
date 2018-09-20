@@ -19,6 +19,7 @@ package com.netflix.hollow.api.producer;
 
 import static com.netflix.hollow.api.consumer.HollowConsumer.AnnouncementWatcher.NO_ANNOUNCEMENT_AVAILABLE;
 import static java.lang.System.currentTimeMillis;
+import static java.util.stream.Collectors.toList;
 
 import com.netflix.hollow.api.consumer.HollowConsumer;
 import com.netflix.hollow.api.metrics.HollowMetricsCollector;
@@ -54,10 +55,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EventListener;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 /**
  * 
@@ -152,7 +155,7 @@ public class HollowProducer {
     public HollowProducer(Publisher publisher,
                           Announcer announcer) {
         this(new HollowFilesystemBlobStager(), publisher, announcer,
-                Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
                 new VersionMinterWithCounter(), null, 0,
                 DEFAULT_TARGET_MAX_TYPE_SHARD_SIZE, null,
                 new DummyBlobStorageCleaner(), new BasicSingleProducerEnforcer());
@@ -162,7 +165,7 @@ public class HollowProducer {
                           Validator validator,
                           Announcer announcer) {
         this(new HollowFilesystemBlobStager(), publisher, announcer,
-                Collections.singletonList(validator), Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.singletonList(validator), Collections.emptyList(), Collections.emptyList(),
                 new VersionMinterWithCounter(), null, 0,
                 DEFAULT_TARGET_MAX_TYPE_SHARD_SIZE, null,
                 new DummyBlobStorageCleaner(), new BasicSingleProducerEnforcer());
@@ -196,7 +199,7 @@ public class HollowProducer {
             long targetMaxTypeShardSize,
             HollowMetricsCollector<HollowProducerMetrics> metricsCollector) {
         this(blobStager, publisher, announcer,
-                validators, listeners, Collections.emptyList(),
+                Collections.emptyList(), validators, listeners, Collections.emptyList(),
                 versionMinter, snapshotPublishExecutor, numStatesBetweenSnapshots,
                 targetMaxTypeShardSize, metricsCollector, new DummyBlobStorageCleaner(), new BasicSingleProducerEnforcer());
     }
@@ -214,8 +217,8 @@ public class HollowProducer {
             HollowMetricsCollector<HollowProducerMetrics> metricsCollector, 
             BlobStorageCleaner blobStorageCleaner, 
             SingleProducerEnforcer singleProducerEnforcer) {
-    	this(blobStager, publisher, announcer, validators,
-                listeners, Collections.emptyList(),
+    	this(blobStager, publisher, announcer,
+                Collections.emptyList(), validators, listeners, Collections.emptyList(),
                 versionMinter, snapshotPublishExecutor, numStatesBetweenSnapshots,
                 targetMaxTypeShardSize, metricsCollector, blobStorageCleaner, singleProducerEnforcer);
     }
@@ -223,6 +226,7 @@ public class HollowProducer {
     protected HollowProducer(BlobStager blobStager,
                              Publisher publisher,
                              Announcer announcer,
+                             List<? extends EventListener> eventListeners,
                              List<Validator> validators,
                              List<HollowProducerListener> listeners,
                              List<HollowValidationListener> validationListeners,
@@ -250,11 +254,16 @@ public class HollowProducer {
         this.readStates = ReadStateHelper.newDeltaChain();
         this.blobStorageCleaner = blobStorageCleaner;
 
-        for(HollowProducerListener listener : listeners)
-            this.listeners.add(listener);
+        for (EventListener listener : eventListeners) {
+            this.listeners.addListener(listener);
+        }
+
+        for (EventListener listener : listeners) {
+            this.listeners.addListener(listener);
+        }
         
-        for(HollowValidationListener vallistener: validationListeners){
-        	this.listeners.add(vallistener);
+        for (EventListener listener: validationListeners) {
+        	this.listeners.addListener(listener);
         }
 
         this.metrics = new HollowProducerMetrics();
@@ -490,13 +499,25 @@ public class HollowProducer {
     public void addListener(HollowProducerListener listener) {
         // @@@ This is not safe with regards to adding a listener during a cycle
         // since the listener may receive a partial sequence of events
-        listeners.add(listener);
+        listeners.addListener(listener);
+    }
+
+    public void addListener(EventListener listener) {
+        // @@@ This is not safe with regards to adding a listener during a cycle
+        // since the listener may receive a partial sequence of events
+        listeners.addListener(listener);
     }
 
     public void removeListener(HollowProducerListener listener) {
         // @@@ This is not safe with regards to removing a listener during a cycle
         // since the listener may receive a partial sequence of events
-        listeners.remove(listener);
+        listeners.removeListener(listener);
+    }
+
+    public void removeListener(EventListener listener) {
+        // @@@ This is not safe with regards to removing a listener during a cycle
+        // since the listener may receive a partial sequence of events
+        listeners.removeListener(listener);
     }
 
     /**
@@ -673,24 +694,19 @@ public class HollowProducer {
     	com.netflix.hollow.api.producer.HollowProducerListener.ProducerStatus.Builder psb = listeners.fireValidationStart(readState);
 
         Validators.ValidationStatus status = null;
-        List<Validators.ValidationResult> results = new ArrayList<>();
     	try {
-            for (Validator validator : validators) {
-                // Proxy from old to new validator
-                Validators.Validator v = new Validators.ValidatorProxy(validator);
-
-                try {
-                    Validators.ValidationResult r = v.onValidate(readState);
-                    results.add(r);
-                } catch (Throwable e) {
-                    // Catch Throwable for compatibility with previous behaviour
-                    // consider changing to RuntimeException
-                    Validators.ValidationResult r = new Validators.ValidationResult(
-                            Validators.ValidationResultType.ERROR,
-                            v.getName(), e, e.getMessage(), Collections.emptyMap());
-                    results.add(r);
-                }
-            }
+    	    // Stream over the concatension of the old and new validators
+            List<Validators.ValidationResult> results = Stream.concat(
+                    validators.stream().map(Validators.ValidatorProxy::new),
+                    listeners.validators.stream())
+                    .map(v -> {
+                        try {
+                            return v.onValidate(readState);
+                        } catch (RuntimeException e) {
+                            return Validators.ValidationResult.name(v).error(e);
+                        }
+                    })
+                    .collect(toList());
 
             status = new Validators.ValidationStatus(results);
 
@@ -1016,6 +1032,7 @@ public class HollowProducer {
         protected File stagingDir;
         protected Publisher publisher;
         protected Announcer announcer;
+        protected List<EventListener> eventListeners = new ArrayList<>();
         protected List<Validator> validators = new ArrayList<>();
         protected List<HollowProducerListener> listeners = new ArrayList<>();
         protected List<HollowValidationListener> validationListeners = new ArrayList<>();
@@ -1051,7 +1068,18 @@ public class HollowProducer {
             this.announcer = announcer;
             return (B)this;
         }
-        
+
+        public B withListener(EventListener listener) {
+            this.eventListeners.add(listener);
+            return (B)this;
+        }
+
+        public B withListeners(EventListener... listeners) {
+            for(EventListener listener : listeners)
+                this.eventListeners.add(listener);
+            return (B)this;
+        }
+
         public B withValidator(HollowProducer.Validator validator) {
             this.validators.add(validator);
             return (B)this;
@@ -1135,7 +1163,11 @@ public class HollowProducer {
         
         public HollowProducer build() {
             checkArguments();
-            return new HollowProducer(stager, publisher, announcer, validators, listeners, validationListeners, versionMinter, snapshotPublishExecutor, numStatesBetweenSnapshots, targetMaxTypeShardSize, metricsCollector, blobStorageCleaner, singleProducerEnforcer);
+            return new HollowProducer(stager, publisher, announcer,
+                    eventListeners, validators, listeners, validationListeners,
+                    versionMinter, snapshotPublishExecutor,
+                    numStatesBetweenSnapshots, targetMaxTypeShardSize,
+                    metricsCollector, blobStorageCleaner, singleProducerEnforcer);
         }
     }
 
