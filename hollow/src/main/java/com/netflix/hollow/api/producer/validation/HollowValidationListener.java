@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
  * In next iteration validators provided more structured data.
  *
  */
+@Deprecated
 public interface HollowValidationListener extends EventListener{
     // TODO(hollow3): expose structured validation result instead of relying on toString of a Validator
     // TODO(hollow3): fire start/complete callbacks as each validator is run in addition to the

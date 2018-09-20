@@ -31,6 +31,7 @@ import java.util.Map;
  * For now ValidationStatus builds these and sets toString on validator as the message (where validators provide any details).
  * In next iteration this might be directly returned by validators.
  */
+@Deprecated
 public class SingleValidationStatus {
     // TODO(hollow3): don't rely on toString() to get validation status details, use the explicit methods here
 
@@ -108,6 +109,7 @@ public class SingleValidationStatus {
 	/**
 	 * Builder to build {@link SingleValidationStatus}.
 	 */
+	@Deprecated
 	public static final class SingleValidationStatusBuilder {
 		private String name;
 		private Status status;

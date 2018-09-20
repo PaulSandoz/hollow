@@ -30,6 +30,7 @@ import java.util.List;
  * This aggregates information across multiple validators per run.
  *
  */
+@Deprecated
 public class AllValidationStatus {
     private final Status status;
     private final List<SingleValidationStatus> validationStatusList;
@@ -76,6 +77,7 @@ public class AllValidationStatus {
 	/**
 	 * Builder to build {@link AllValidationStatus}.
 	 */
+	@Deprecated
 	public static final class AllValidationStatusBuilder {
 		private Status status;
 		private List<SingleValidationStatus> validationStatusList = new ArrayList<>();

@@ -36,10 +36,48 @@ import java.util.concurrent.TimeUnit;
 public interface HollowProducerListener extends EventListener {
     // TODO(hollow3): replace (long,TimeUnit) pair with java.time.Duration
 
+
+    ///////////////////////////
+    ///////////////////////////
+
+    interface DataModelInitializationListener {
+        /**
+         * Called after the {@code HollowProducer} has initialized its data model.
+         */
+        void onProducerInit(long elapsed, TimeUnit unit);
+    }
+
+    // Called when HollowProducer.initializeDataModel is called
     /**
      * Called after the {@code HollowProducer} has initialized its data model.
      */
     void onProducerInit(long elapsed, TimeUnit unit);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // These events are associated with HollowProducer.restore
+    interface RestoreListener {
+        /**
+         * Called after the {@code HollowProducer} has restored its data state to the indicated version.
+         * If previous state is not available to restore from, then this callback will not be called.
+         *
+         * @param restoreVersion Version from which the state for {@code HollowProducer} was restored.
+         */
+        void onProducerRestoreStart(long restoreVersion);
+
+        /**
+         * Called after the {@code HollowProducer} has restored its data state to the indicated version.
+         * If previous state is not available to restore from, then this callback will not be called.
+         *
+         * @param status of the restore. {@link RestoreStatus#getStatus()} will return {@code SUCCESS} when
+         *   the desired version was reached during restore, otheriwse {@code FAIL} will be returned.
+         * @param elapsed duration of the restore in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onProducerRestoreComplete(RestoreStatus status, long elapsed, TimeUnit unit);
+    }
 
     /**
      * Called after the {@code HollowProducer} has restored its data state to the indicated version.
@@ -60,6 +98,11 @@ public interface HollowProducerListener extends EventListener {
      */
     void onProducerRestoreComplete(RestoreStatus status, long elapsed, TimeUnit unit);
 
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // This is called just before onCycleStart, can the two be merged with additional arguments
     /**
      * Indicates that the next state produced will begin a new delta chain.
      * This will be called prior to the next state being produced either if
@@ -69,6 +112,43 @@ public interface HollowProducerListener extends EventListener {
      * @param version the version of the state that will become the first of a new delta chain
      */
     void onNewDeltaChain(long version);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    interface CycleListener {
+        enum CycleSkipReason {
+            NOT_PRIMARY_PRODUCER;
+        }
+
+        // See HollowProducerListenerV2, skiped because not primary producer
+        // Can this be merged in to onCycleComplete with status?
+
+        /**
+         * Called when a cycle is skipped.
+         */
+        void onCycleSkip(CycleSkipReason reason);
+
+        /**
+         * Called when the {@code HollowProducer} has begun a new cycle.
+         *
+         * @param version Version produced by the {@code HollowProducer} for new cycle about to start.
+         */
+        void onCycleStart(long version);
+
+        /**
+         * Called after {@code HollowProducer} has completed a cycle normally or abnormally. A {@code SUCCESS} status indicates that the
+         * entire cycle was successful and the producer is available to begin another cycle.
+         *
+         * @param status ProducerStatus of this cycle. {@link ProducerStatus#getStatus()} will return {@code SUCCESS}
+         *   when the a new data state has been announced to consumers or when there were no changes to the data; it will return @{code FAIL}
+         *   when any stage failed or any other failure occured during the cycle.
+         * @param elapsed duration of the cycle in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onCycleComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
 
     /**
      * Called when the {@code HollowProducer} has begun a new cycle.
@@ -89,12 +169,27 @@ public interface HollowProducerListener extends EventListener {
      */
     void onCycleComplete(ProducerStatus status, long elapsed, TimeUnit unit);
 
-    /**
-     * Called after the new state has been populated if the {@code HollowProducer} detects that no data has changed, thus no snapshot nor delta should be produced.<p>
-     *
-     * @param version Current version of the cycle.
-     */
-    void onNoDeltaAvailable(long version);
+
+    ///////////////////////////
+    ///////////////////////////
+
+    interface PopulateListener {
+        /**
+         * Called before starting to execute the task to populate data into Hollow.
+         *
+         * @param version Current version of the cycle
+         */
+        void onPopulateStart(long version);
+
+        /**
+         * Called once populating task stage has finished successfully or failed. Use {@code ProducerStatus#getStatus()} to get status of the task.
+         *
+         * @param status A value of {@code Success} indicates that all data was successfully populated. {@code Fail} status indicates populating hollow with data failed.
+         * @param elapsed Time taken to populate hollow.
+         * @param unit unit of {@code elapsed} duration.
+         */
+        void onPopulateComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
 
     /**
      * Called before starting to execute the task to populate data into Hollow.
@@ -111,6 +206,32 @@ public interface HollowProducerListener extends EventListener {
      * @param unit unit of {@code elapsed} duration.
      */
     void onPopulateComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    interface PublishListener {
+        /**
+         * Called when the {@code HollowProducer} has begun publishing the {@code HollowBlob}s produced this cycle.
+         *
+         * @param version Version to be published.
+         */
+        void onPublishStart(long version);
+
+        /**
+         * Called after the publish stage finishes normally or abnormally. A {@code SUCCESS} status indicates that
+         * the {@code HollowBlob}s produced this cycle has been published to the blob store.
+         *
+         * @param status CycleStatus of the publish stage. {@link ProducerStatus#getStatus()} will return {@code SUCCESS}
+         *   when the publish was successful; @{code FAIL} otherwise.
+         * @param elapsed duration of the publish stage in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onPublishComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
+
+    // Called after populate
 
     /**
      * Called when the {@code HollowProducer} has begun publishing the {@code HollowBlob}s produced this cycle.
@@ -130,6 +251,25 @@ public interface HollowProducerListener extends EventListener {
      */
     void onPublishComplete(ProducerStatus status, long elapsed, TimeUnit unit);
 
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // Called after populateComplete and instead of publish
+    // Can be merged in to PublishListener?
+    /**
+     * Called after the new state has been populated if the {@code HollowProducer} detects that no data has changed, thus no snapshot nor delta should be produced.<p>
+     *
+     * @param version Current version of the cycle.
+     */
+    void onNoDeltaAvailable(long version);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // Called during publish start-complete cycle for each blob
+    // Can be merged in to PublishListener?
     /**
      * Called once a blob has been published successfully or failed to published. Use {@link PublishStatus#getBlob()} to get more details on blob type and size.
      * This method is called for every {@link com.netflix.hollow.api.producer.HollowProducer.Blob.Type} that was published.
@@ -140,6 +280,34 @@ public interface HollowProducerListener extends EventListener {
      */
     // TODO(hollow3): "artifact" as a term is redundant with "blob", probably don't need both. #onBlobPublish(...)?
     void onArtifactPublish(PublishStatus publishStatus, long elapsed, TimeUnit unit);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // This is effectively a validator that is executed before any other validators
+
+    interface IntegrityCheckListener {
+        /**
+         * Called when the {@code HollowProducer} has begun checking the integrity of the {@code HollowBlob}s produced this cycle.
+         *
+         * @param version Version to be checked
+         */
+        void onIntegrityCheckStart(long version);
+
+        /**
+         * Called after the integrity check stage finishes normally or abnormally. A {@code SUCCESS} status indicates that
+         * the previous snapshot, current snapshot, delta, and reverse-delta {@code HollowBlob}s are all internally consistent.
+         *
+         * @param status CycleStatus of the integrity check stage. {@link ProducerStatus#getStatus()} will return {@code SUCCESS}
+         *   when the blobs are internally consistent; @{code FAIL} otherwise.
+         * @param elapsed duration of the integrity check stage in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onIntegrityCheckComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
+
+    // Called after publish start-complete cycle
 
     /**
      * Called when the {@code HollowProducer} has begun checking the integrity of the {@code HollowBlob}s produced this cycle.
@@ -159,11 +327,42 @@ public interface HollowProducerListener extends EventListener {
      */
     void onIntegrityCheckComplete(ProducerStatus status, long elapsed, TimeUnit unit);
 
+
+    ///////////////////////////
+    ///////////////////////////
+
+    // See also HollowValidationListener (deprecated) and Validators.ValidationStatusListener
+
+    @Deprecated
+    interface ValidationListener {
+        /**
+         * Called when the {@code HollowProducer} has begun validating the new data state produced this cycle.
+         *
+         * @param version Version to be validated
+         */
+        void onValidationStart(long version);
+
+        /**
+         * Called after the validation stage finishes normally or abnormally. A {@code SUCCESS} status indicates that
+         * the newly published data state is considered valid.
+         *
+         * @param status CycleStatus of the publish stage. {@link ProducerStatus#getStatus()} will return {@code SUCCESS}
+         *   when the publish was successful; @{code FAIL} otherwise.
+         * @param elapsed duration of the validation stage in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onValidationComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
+
+    // Called after integrity check cycle
+    // Validators will be called during the validation start-complete cycle
+
     /**
      * Called when the {@code HollowProducer} has begun validating the new data state produced this cycle.
      *
      * @param version Version to be validated
      */
+    @Deprecated
     void onValidationStart(long version);
 
     /**
@@ -175,7 +374,34 @@ public interface HollowProducerListener extends EventListener {
      * @param elapsed duration of the validation stage in {@code unit} units
      * @param unit units of the {@code elapsed} duration
      */
+    @Deprecated
     void onValidationComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+
+
+    ///////////////////////////
+    ///////////////////////////
+
+    interface AnnouncementListener {
+        /**
+         * Called when the {@code HollowProducer} has begun announcing the {@code HollowBlob} published this cycle.
+         *
+         * @param version of {@code HollowBlob} that will be announced.
+         */
+        void onAnnouncementStart(long version);
+
+        /**
+         * Called after the announcement stage finishes normally or abnormally. A {@code SUCCESS} status indicates
+         * that the {@code HollowBlob} published this cycle has been announced to consumers.
+         *
+         * @param status CycleStatus of the announcement stage. {@link ProducerStatus#getStatus()} will return {@code SUCCESS}
+         *   when the announce was successful; @{code FAIL} otherwise.
+         * @param elapsed duration of the announcement stage in {@code unit} units
+         * @param unit units of the {@code elapsed} duration
+         */
+        void onAnnouncementComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+    }
+
+    // Called after a successful validation start-complete cycle
 
     /**
      * Called when the {@code HollowProducer} has begun announcing the {@code HollowBlob} published this cycle.
@@ -194,6 +420,8 @@ public interface HollowProducerListener extends EventListener {
      * @param unit units of the {@code elapsed} duration
      */
     void onAnnouncementComplete(ProducerStatus status, long elapsed, TimeUnit unit);
+
+
 
     /**
      * This class represents information on details when {@link HollowProducer} has finished executing a particular stage.
@@ -485,6 +713,10 @@ public interface HollowProducerListener extends EventListener {
     }
 
     enum Status {
-        SUCCESS, FAIL, SKIP
+        SUCCESS, FAIL,
+        // This is currently only used to report skipping of a validator
+        // with SingleValidationStatusBuilder and SingleValidationStatus
+        @Deprecated
+        SKIP
     }
 }

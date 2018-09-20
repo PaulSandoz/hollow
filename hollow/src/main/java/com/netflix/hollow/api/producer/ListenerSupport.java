@@ -28,6 +28,7 @@ import com.netflix.hollow.api.producer.validation.AllValidationStatus;
 import com.netflix.hollow.api.producer.validation.AllValidationStatus.AllValidationStatusBuilder;
 import com.netflix.hollow.api.producer.validation.HollowValidationListener;
 import java.util.Collection;
+import java.util.EventListener;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -46,13 +47,38 @@ final class ListenerSupport {
     private static final Logger LOG = Logger.getLogger(ListenerSupport.class.getName());
 
     private final Set<HollowProducerListener> listeners;
-    private final Set<HollowValidationListener> validationListeners;
+    private final Set<HollowValidationListener> hollowValidationListeners;
+    private final Set<Validators.ValidationStatusListener> validationStatusListeners;
+
+    // @@@ This is used only by HollowIncrementalProducer, and should be
+    // separated out
     private final Set<IncrementalCycleListener> incrementalCycleListeners;
 
     ListenerSupport() {
         listeners = new CopyOnWriteArraySet<>();
-        validationListeners = new CopyOnWriteArraySet<>();
+        hollowValidationListeners = new CopyOnWriteArraySet<>();
+        validationStatusListeners = new CopyOnWriteArraySet<>();
         incrementalCycleListeners = new CopyOnWriteArraySet<>();
+    }
+
+    void addListener(EventListener listener) {
+        if (listener instanceof HollowProducerListener) {
+            add((HollowProducerListener) listener);
+        }
+
+        if (listener instanceof HollowValidationListener) {
+            add((HollowValidationListener) listener);
+        }
+
+        if (listener instanceof Validators.ValidationStatusListener) {
+            add((Validators.ValidationStatusListener) listener);
+        }
+    }
+
+    void removeListener(EventListener listener) {
+        if (listener instanceof HollowProducerListener) {
+            remove((HollowProducerListener) listener);
+        }
     }
 
     void add(HollowProducerListener listener) {
@@ -60,7 +86,11 @@ final class ListenerSupport {
     }
 
     void add(HollowValidationListener listener) {
-        validationListeners.add(listener);
+        hollowValidationListeners.add(listener);
+    }
+
+    void add(Validators.ValidationStatusListener listener) {
+        validationStatusListeners.add(listener);
     }
 
     void add(IncrementalCycleListener listener) {
@@ -182,20 +212,27 @@ final class ListenerSupport {
         // @@@ Arguably even if the methods are aliased calling twice would be
         // consistent with validation completion.
 
-        fire(validationListeners.stream()
+        fire(hollowValidationListeners.stream()
                         // Ok to use contains with an instance whose class differs from collection's type
                         .filter(l -> !listeners.contains(l)),
                 l -> l.onValidationStart(version));
 
+        fire(validationStatusListeners,
+                l -> l.onValidationStatusStart(version));
+
         return new ProducerStatus.Builder().version(readState);
     }
 
-    void fireValidationComplete(ProducerStatus.Builder psb, AllValidationStatusBuilder valStatusBuilder) {
+    void fireValidationComplete(
+            ProducerStatus.Builder psb, Validators.ValidationStatus s, AllValidationStatusBuilder valStatusBuilder) {
         ProducerStatus st = psb.build();
         fire(l -> l.onValidationComplete(st, psb.elapsed(), MILLISECONDS));
 
         AllValidationStatus valStatus = valStatusBuilder.build();
-        fire(validationListeners, l -> l.onValidationComplete(valStatus, psb.elapsed(), MILLISECONDS));
+        fire(hollowValidationListeners, l -> l.onValidationComplete(valStatus, psb.elapsed(), MILLISECONDS));
+
+        fire(validationStatusListeners,
+                l -> l.onValidationStatusComplete(s, st.getVersion(), psb.elapsed(), MILLISECONDS));
     }
 
     ProducerStatus.Builder fireAnnouncementStart(HollowProducer.ReadState readState) {
