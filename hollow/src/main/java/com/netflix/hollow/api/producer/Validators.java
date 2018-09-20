@@ -5,6 +5,7 @@ import com.netflix.hollow.api.producer.validation.SingleValidationStatus;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EventListener;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,7 +38,7 @@ public class Validators {
 
     /**
      * A result of a {@link Validator}.
-     * @@@ define builder
+     *
      */
     public static final class ValidationResult {
         private final ValidationResultType type;
@@ -89,6 +90,69 @@ public class Validators {
 
         public boolean isPassed() {
             return type == ValidationResultType.PASSED;
+        }
+
+        public static ValidationResultBuilder name(Validator v) {
+            return name(v.getName());
+        }
+
+        public static ValidationResultBuilder name(String name) {
+            return new ValidationResultBuilder(name);
+        }
+
+        static public class ValidationResultBuilder {
+            private final String name;
+            private final Map<String, String> details;
+
+            ValidationResultBuilder(String name) {
+                this.name = name;
+                this.details = new HashMap<>();
+            }
+
+            public ValidationResultBuilder detail(String name, String value) {
+                details.put(name, value);
+                return this;
+            }
+
+            public ValidationResult passed() {
+                return new ValidationResult(
+                        ValidationResultType.PASSED,
+                        name,
+                        null,
+                        null,
+                        details
+                );
+            }
+
+            public ValidationResult passed(String message) {
+                return new ValidationResult(
+                        ValidationResultType.PASSED,
+                        name,
+                        null,
+                        message,
+                        details
+                );
+            }
+
+            public ValidationResult failed(String message) {
+                return new ValidationResult(
+                        ValidationResultType.FAILED,
+                        name,
+                        null,
+                        message,
+                        details
+                );
+            }
+
+            public ValidationResult error(Throwable t) {
+                return new ValidationResult(
+                        ValidationResultType.FAILED,
+                        name,
+                        t,
+                        t.getMessage(),
+                        details
+                );
+            }
         }
     }
 

@@ -28,8 +28,6 @@ import com.netflix.hollow.core.schema.HollowSchema;
 import com.netflix.hollow.core.schema.HollowSchema.SchemaType;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -86,55 +84,36 @@ public class DuplicateDataDetectionValidatorNew implements Validators.Validator 
 
     @Override
     public Validators.ValidationResult onValidate(ReadState readState) {
-        Map<String, String> details = new HashMap<>();
-        details.put(DATA_TYPE_NAME, dataTypeName);
+        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.name(this);
+        vrb.detail(DATA_TYPE_NAME, dataTypeName);
 
         PrimaryKey primaryKey = null;
         if (fieldPathNames == null) {
             HollowSchema schema = readState.getStateEngine().getSchema(dataTypeName);
             if (schema.getSchemaType() != (SchemaType.OBJECT)) {
-                return new Validators.ValidationResult(Validators.ValidationResultType.FAILED,
-                        getName(),
-                        null,
-                        String.format(NOT_AN_OBJECT_ERROR_MSGR_FORMAT, dataTypeName),
-                        details
-                );
+                return vrb.failed(String.format(NOT_AN_OBJECT_ERROR_MSGR_FORMAT, dataTypeName));
             }
 
             HollowObjectSchema oSchema = (HollowObjectSchema) schema;
             primaryKey = oSchema.getPrimaryKey();
             if (primaryKey == null) {
-                return new Validators.ValidationResult(Validators.ValidationResultType.FAILED,
-                        getName(),
-                        null,
-                        String.format(NO_PRIMARY_KEY_ERRRO_MSG_FORMAT, dataTypeName),
-                        details
-                );
+                return vrb.failed(String.format(NO_PRIMARY_KEY_ERRRO_MSG_FORMAT, dataTypeName));
             }
         } else {
             primaryKey = new PrimaryKey(dataTypeName, fieldPathNames);
         }
 
         String fieldPaths = Arrays.toString(primaryKey.getFieldPaths());
-        details.put(FIELD_PATH_NAME, fieldPaths);
+        vrb.detail(FIELD_PATH_NAME, fieldPaths);
 
         Collection<Object[]> duplicateKeys = getDuplicateKeys(readState.getStateEngine(), primaryKey);
         if (!duplicateKeys.isEmpty()) {
-            return new Validators.ValidationResult(Validators.ValidationResultType.FAILED,
-                    getName(),
-                    null,
-                    String.format(DUPLICATE_KEYS_FOUND_ERRRO_MSG_FORMAT, dataTypeName, fieldPaths,
-                            duplicateKeysToString(duplicateKeys)),
-                    details
-            );
+            String message = String.format(DUPLICATE_KEYS_FOUND_ERRRO_MSG_FORMAT, dataTypeName, fieldPaths,
+                    duplicateKeysToString(duplicateKeys));
+            return vrb.failed(message);
         }
 
-        return new Validators.ValidationResult(Validators.ValidationResultType.PASSED,
-                getName(),
-                null,
-                "",
-                details
-        );
+        return vrb.passed();
     }
 
     private Collection<Object[]> getDuplicateKeys(HollowReadStateEngine stateEngine, PrimaryKey primaryKey) {

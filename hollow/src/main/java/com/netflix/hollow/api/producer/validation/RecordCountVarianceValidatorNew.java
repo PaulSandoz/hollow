@@ -20,8 +20,6 @@ package com.netflix.hollow.api.producer.validation;
 import com.netflix.hollow.api.producer.HollowProducer.ReadState;
 import com.netflix.hollow.api.producer.Validators;
 import com.netflix.hollow.core.read.engine.HollowTypeReadState;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Used to validate if the cardinality change in current cycle is with in the allowed percent for a given typeName.
@@ -77,46 +75,30 @@ public class RecordCountVarianceValidatorNew implements Validators.Validator {
 
     @Override
     public Validators.ValidationResult onValidate(ReadState readState) {
-        Map<String, String> details = new HashMap<>();
-        details.put(ALLOWABLE_VARIANCE_PERCENT_NAME, String.valueOf(allowableVariancePercent));
-        details.put(DATA_TYPE_NAME, typeName);
+        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.name(this);
+        vrb.detail(ALLOWABLE_VARIANCE_PERCENT_NAME, String.valueOf(allowableVariancePercent));
+        vrb.detail(DATA_TYPE_NAME, typeName);
 
         HollowTypeReadState typeState = readState.getStateEngine().getTypeState(typeName);
         int latestCardinality = typeState.getPopulatedOrdinals().cardinality();
         int previousCardinality = typeState.getPreviousOrdinals().cardinality();
-        details.put(LATEST_CARDINALITY_NAME, String.valueOf(latestCardinality));
-        details.put(PREVIOUS_CARDINALITY_NAME, String.valueOf(previousCardinality));
+        vrb.detail(LATEST_CARDINALITY_NAME, String.valueOf(latestCardinality));
+        vrb.detail(PREVIOUS_CARDINALITY_NAME, String.valueOf(previousCardinality));
 
         if (previousCardinality == 0) {
-            return new Validators.ValidationResult(Validators.ValidationResultType.PASSED,
-                    getName(),
-                    null,
-                    String.format(ZERO_PREVIOUS_COUNT_WARN_MSG_FORMAT, typeName),
-                    details
-            );
+            return vrb.passed(String.format(ZERO_PREVIOUS_COUNT_WARN_MSG_FORMAT, typeName));
         }
 
         float actualChangePercent = getChangePercent(latestCardinality, previousCardinality);
-        details.put(ACTUAL_CHANGE_PERCENT_NAME, String.valueOf(actualChangePercent));
+        vrb.detail(ACTUAL_CHANGE_PERCENT_NAME, String.valueOf(actualChangePercent));
 
         if (Float.compare(actualChangePercent, allowableVariancePercent) > 0) {
             String message = String.format(FAILED_RECORD_COUNT_VALIDATION, typeName, actualChangePercent,
                     allowableVariancePercent);
-
-            return new Validators.ValidationResult(Validators.ValidationResultType.FAILED,
-                    getName(),
-                    null,
-                    message,
-                    details
-            );
+            return vrb.failed(message);
         }
 
-        return new Validators.ValidationResult(Validators.ValidationResultType.PASSED,
-                getName(),
-                null,
-                "",
-                details
-        );
+        return vrb.passed();
     }
 
     private float getChangePercent(int latestCardinality, int previousCardinality) {
