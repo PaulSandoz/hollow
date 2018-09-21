@@ -303,7 +303,7 @@ public class Validators {
             } else {
                 b.fail(r.ex);
             }
-            avsb.addSingelValidationStatus(b.build());
+            avsb.addSingleValidationStatus(b.build());
         }
 
         if (s.isPassed()) {

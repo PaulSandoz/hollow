@@ -247,7 +247,7 @@ public class HollowProducer {
                 targetMaxTypeShardSize, metricsCollector, blobStorageCleaner, singleProducerEnforcer);
     }
 
-    protected HollowProducer(Builder b) {
+    protected HollowProducer(Builder<?> b) {
         this(b.stager, b.publisher, b.announcer,
                 b.eventListeners, b.validators, b.listeners, b.validationListeners,
                 b.versionMinter, b.snapshotPublishExecutor,
