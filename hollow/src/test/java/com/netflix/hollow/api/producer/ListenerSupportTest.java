@@ -46,11 +46,11 @@ public class ListenerSupportTest {
     public void setUp() {
         MockitoAnnotations.initMocks(this);
         listenerSupport = new ListenerSupport();
-        listenerSupport.add(listener);
-        listenerSupport.add(validationListener);
-        listenerSupport.add(validationStatusListener);
-        listenerSupport.add((HollowValidationListener) producerAndValidationListener);
-        listenerSupport.add((HollowProducerListenerV2) producerAndValidationListener);
+        listenerSupport.addListener(listener);
+        listenerSupport.addListener(validationListener);
+        listenerSupport.addListener(validationStatusListener);
+        listenerSupport.addListener((HollowValidationListener) producerAndValidationListener);
+        listenerSupport.addListener((HollowProducerListenerV2) producerAndValidationListener);
     }
 
     @Test

@@ -18,7 +18,7 @@
 package com.netflix.hollow.api.producer.validation;
 
 import com.netflix.hollow.api.producer.HollowProducerListener.ProducerStatus;
-import java.util.EventListener;
+import com.netflix.hollow.api.producer.HollowProducerListeners;
 import java.util.concurrent.TimeUnit;
 /**
  * *************************************
@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
  *
  */
 @Deprecated
-public interface HollowValidationListener extends EventListener{
+public interface HollowValidationListener extends HollowProducerListeners.HollowProducerEventListener {
     // TODO(hollow3): expose structured validation result instead of relying on toString of a Validator
     // TODO(hollow3): fire start/complete callbacks as each validator is run in addition to the
     //                start/complete of the overall validation stage

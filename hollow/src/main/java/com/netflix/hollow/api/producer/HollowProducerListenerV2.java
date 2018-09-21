@@ -29,6 +29,14 @@ public interface HollowProducerListenerV2 extends HollowProducerListener {
         NOT_PRIMARY_PRODUCER;
     }
 
+    // CycleListener
+
+    @Override
+    default void onCycleSkip(HollowProducerListeners.CycleListener.CycleSkipReason reason) {
+        CycleSkipReason r = reason == null ? null : CycleSkipReason.NOT_PRIMARY_PRODUCER;
+        onCycleSkip(r);
+    }
+
     /**
      * Called when a cycle is skipped.
      */

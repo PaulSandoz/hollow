@@ -22,13 +22,11 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import com.netflix.hollow.api.producer.HollowProducerListener.ProducerStatus;
 import com.netflix.hollow.api.producer.HollowProducerListener.PublishStatus;
 import com.netflix.hollow.api.producer.HollowProducerListener.RestoreStatus;
-import com.netflix.hollow.api.producer.HollowProducerListenerV2.CycleSkipReason;
 import com.netflix.hollow.api.producer.IncrementalCycleListener.IncrementalCycleStatus;
 import com.netflix.hollow.api.producer.validation.AllValidationStatus;
 import com.netflix.hollow.api.producer.validation.AllValidationStatus.AllValidationStatusBuilder;
 import com.netflix.hollow.api.producer.validation.HollowValidationListener;
 import java.util.Collection;
-import java.util.EventListener;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -46,102 +44,203 @@ final class ListenerSupport {
 
     private static final Logger LOG = Logger.getLogger(ListenerSupport.class.getName());
 
-    private final Set<HollowProducerListener> listeners;
-    private final Set<HollowValidationListener> hollowValidationListeners;
-    private final Set<Validators.ValidationStatusListener> validationStatusListeners;
-    // @@@ package access for now
-    final Set<Validators.ValidatorListener> validators;
-
-    // @@@ This is used only by HollowIncrementalProducer, and should be
-    // separated out
-    private final Set<IncrementalCycleListener> incrementalCycleListeners;
+    private final Set<HollowProducerListeners.HollowProducerEventListener> eventListeners;
 
     ListenerSupport() {
-        listeners = new CopyOnWriteArraySet<>();
-        hollowValidationListeners = new CopyOnWriteArraySet<>();
-        validationStatusListeners = new CopyOnWriteArraySet<>();
-        validators = new CopyOnWriteArraySet<>();
+        eventListeners = new CopyOnWriteArraySet<>();
+
+        // @@@ This is used only by HollowIncrementalProducer, and should be
+        // separated out
         incrementalCycleListeners = new CopyOnWriteArraySet<>();
     }
 
-    void addListener(EventListener listener) {
-        if (listener instanceof HollowProducerListener) {
-            add((HollowProducerListener) listener);
-        }
-
-        if (listener instanceof HollowValidationListener) {
-            add((HollowValidationListener) listener);
-        }
-
-        if (listener instanceof Validators.ValidationStatusListener) {
-            add((Validators.ValidationStatusListener) listener);
-        }
-
-        if (listener instanceof Validators.ValidatorListener) {
-            add((Validators.ValidatorListener) listener);
-        }
+    void addListener(HollowProducerListeners.HollowProducerEventListener listener) {
+        eventListeners.add(listener);
     }
 
-    void removeListener(EventListener listener) {
-        if (listener instanceof HollowProducerListener) {
-            remove((HollowProducerListener) listener);
-        }
-
-        if (listener instanceof HollowValidationListener) {
-            remove((HollowValidationListener) listener);
-        }
-
-        if (listener instanceof Validators.ValidationStatusListener) {
-            remove((Validators.ValidationStatusListener) listener);
-        }
-
-        if (listener instanceof Validators.ValidatorListener) {
-            remove((Validators.ValidatorListener) listener);
-        }
+    void removeListener(HollowProducerListeners.HollowProducerEventListener listener) {
+        eventListeners.remove(listener);
     }
 
-    void add(HollowProducerListener listener) {
-        listeners.add(listener);
+    <T extends HollowProducerListeners.HollowProducerEventListener> Stream<T> getListeners(Class<T> c) {
+        return eventListeners.stream().filter(c::isInstance).map(c::cast);
     }
 
-    void add(HollowValidationListener listener) {
-        hollowValidationListeners.add(listener);
+    private <T extends HollowProducerListeners.HollowProducerEventListener> void fire(
+            Class<T> c, Consumer<? super T> r) {
+        fireStream(getListeners(c), r);
     }
 
-    void add(Validators.ValidationStatusListener listener) {
-        validationStatusListeners.add(listener);
+    private <T extends HollowProducerListeners.HollowProducerEventListener> void fireStream(
+            Stream<T> s, Consumer<? super T> r) {
+        s.forEach(l -> {
+            try {
+                r.accept(l);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Error executing listener", e);
+            }
+        });
     }
 
-    void add(Validators.ValidatorListener listener) {
-        validators.add(listener);
+    void fireProducerInit(long elapsedMillis) {
+        fire(HollowProducerListeners.DataModelInitializationListener.class,
+                l -> l.onProducerInit(elapsedMillis, MILLISECONDS));
     }
+
+
+    void fireProducerRestoreStart(long version) {
+        fire(HollowProducerListeners.RestoreListener.class,
+                l -> l.onProducerRestoreStart(version));
+    }
+
+    void fireProducerRestoreComplete(RestoreStatus status, long elapsedMillis) {
+        fire(HollowProducerListeners.RestoreListener.class,
+                l -> l.onProducerRestoreComplete(status, elapsedMillis, MILLISECONDS));
+    }
+
+
+    void fireNewDeltaChain(long version) {
+        fire(HollowProducerListeners.CycleListener.class,
+                l -> l.onNewDeltaChain(version));
+    }
+
+    ProducerStatus.Builder fireCycleSkipped(HollowProducerListeners.CycleListener.CycleSkipReason reason) {
+        fire(HollowProducerListeners.CycleListener.class,
+                l -> l.onCycleSkip(reason));
+
+        return new ProducerStatus.Builder();
+    }
+
+    ProducerStatus.Builder fireCycleStart(long version) {
+        fire(HollowProducerListeners.CycleListener.class,
+                l -> l.onCycleStart(version));
+
+        return new ProducerStatus.Builder().version(version);
+    }
+
+    void fireCycleComplete(ProducerStatus.Builder psb) {
+        ProducerStatus st = psb.build();
+        fire(HollowProducerListeners.CycleListener.class,
+                l -> l.onCycleComplete(st, psb.elapsed(), MILLISECONDS));
+    }
+
+
+    ProducerStatus.Builder firePopulateStart(long version) {
+        fire(HollowProducerListeners.PopulateListener.class,
+                l -> l.onPopulateStart(version));
+
+        return new ProducerStatus.Builder().version(version);
+    }
+
+    void firePopulateComplete(ProducerStatus.Builder builder) {
+        ProducerStatus st = builder.build();
+        fire(HollowProducerListeners.PopulateListener.class,
+                l -> l.onPopulateComplete(st, builder.elapsed(), MILLISECONDS));
+    }
+
+
+    void fireNoDelta(ProducerStatus.Builder psb) {
+        fire(HollowProducerListeners.PublishListener.class,
+                l -> l.onNoDeltaAvailable(psb.version()));
+    }
+
+    ProducerStatus.Builder firePublishStart(long version) {
+        fire(HollowProducerListeners.PublishListener.class,
+                l -> l.onPublishStart(version));
+
+        return new ProducerStatus.Builder().version(version);
+    }
+
+    void fireArtifactPublish(PublishStatus.Builder builder) {
+        PublishStatus status = builder.build();
+        fire(HollowProducerListeners.PublishListener.class,
+                l -> l.onArtifactPublish(status, builder.elapsed(), MILLISECONDS));
+    }
+
+
+    void firePublishComplete(ProducerStatus.Builder builder) {
+        ProducerStatus status = builder.build();
+        fire(HollowProducerListeners.PublishListener.class,
+                l -> l.onPublishComplete(status, builder.elapsed(), MILLISECONDS));
+    }
+
+
+    ProducerStatus.Builder fireIntegrityCheckStart(HollowProducer.ReadState readState) {
+        long version = readState.getVersion();
+        fire(HollowProducerListeners.IntegrityCheckListener.class,
+                l -> l.onIntegrityCheckStart(version));
+
+        return new ProducerStatus.Builder().version(readState);
+    }
+
+    void fireIntegrityCheckComplete(ProducerStatus.Builder psb) {
+        ProducerStatus st = psb.build();
+        fire(HollowProducerListeners.IntegrityCheckListener.class,
+                l -> l.onIntegrityCheckComplete(st, psb.elapsed(), MILLISECONDS));
+    }
+
+
+    ProducerStatus.Builder fireValidationStart(HollowProducer.ReadState readState) {
+        long version = readState.getVersion();
+        fire(HollowProducerListener.class,
+                l -> l.onValidationStart(version));
+
+        // HollowValidationListener and HollowProducerListener both have the same
+        // method signature for onValidationStart. If an instance implements both
+        // interfaces and is registered as both then the event is only fired once
+
+        fireStream(getListeners(HollowValidationListener.class)
+                        .filter(l -> !(l instanceof HollowProducerListener)),
+                l -> l.onValidationStart(version));
+
+        fire(Validators.ValidationStatusListener.class,
+                l -> l.onValidationStatusStart(version));
+
+        return new ProducerStatus.Builder().version(readState);
+    }
+
+    void fireValidationComplete(
+            ProducerStatus.Builder psb, Validators.ValidationStatus s, AllValidationStatusBuilder valStatusBuilder) {
+        ProducerStatus st = psb.build();
+
+        fire(HollowProducerListener.class,
+                l -> l.onValidationComplete(st, psb.elapsed(), MILLISECONDS));
+
+        AllValidationStatus valStatus = valStatusBuilder.build();
+        fire(HollowValidationListener.class,
+                l -> l.onValidationComplete(valStatus, psb.elapsed(), MILLISECONDS));
+
+        fire(Validators.ValidationStatusListener.class,
+                l -> l.onValidationStatusComplete(s, st.getVersion(), psb.elapsed(), MILLISECONDS));
+    }
+
+
+    ProducerStatus.Builder fireAnnouncementStart(HollowProducer.ReadState readState) {
+        long version = readState.getVersion();
+        fire(HollowProducerListeners.AnnouncementListener.class,
+                l -> l.onAnnouncementStart(version));
+
+        return new ProducerStatus.Builder().version(readState);
+    }
+
+    void fireAnnouncementComplete(ProducerStatus.Builder psb) {
+        ProducerStatus st = psb.build();
+        fire(HollowProducerListeners.AnnouncementListener.class,
+                l -> l.onAnnouncementComplete(st, psb.elapsed(), MILLISECONDS));
+    }
+
+
+    // @@@ This is used only by HollowIncrementalProducer, and should be
+    // separated out
+
+    private final Set<IncrementalCycleListener> incrementalCycleListeners;
 
     void add(IncrementalCycleListener listener) {
         incrementalCycleListeners.add(listener);
     }
 
-    void remove(HollowProducerListener listener) {
-        listeners.remove(listener);
-    }
-
-    void remove(HollowValidationListener listener) {
-        hollowValidationListeners.remove(listener);
-    }
-
-    void remove(Validators.ValidationStatusListener listener) {
-        validationStatusListeners.remove(listener);
-    }
-
-    void remove(Validators.ValidatorListener listener) {
-        validators.remove(listener);
-    }
-
     void remove(IncrementalCycleListener listener) {
         incrementalCycleListeners.remove(listener);
-    }
-
-    private void fire(Consumer<? super HollowProducerListener> r) {
-        fire(listeners.stream(), r);
     }
 
     private <T> void fire(Collection<T> ls, Consumer<? super T> r) {
@@ -158,130 +257,6 @@ final class ListenerSupport {
         });
     }
 
-    void fireProducerInit(long elapsedMillis) {
-        fire(l -> l.onProducerInit(elapsedMillis, MILLISECONDS));
-    }
-
-    void fireProducerRestoreStart(long version) {
-        fire(l -> l.onProducerRestoreStart(version));
-    }
-
-    void fireProducerRestoreComplete(RestoreStatus status, long elapsedMillis) {
-        fire(l -> l.onProducerRestoreComplete(status, elapsedMillis, MILLISECONDS));
-    }
-
-    void fireNewDeltaChain(long version) {
-        fire(l -> l.onNewDeltaChain(version));
-    }
-
-    ProducerStatus.Builder fireCycleSkipped(CycleSkipReason reason) {
-        fire(listeners.stream()
-                        .filter(l -> l instanceof HollowProducerListenerV2)
-                        .map(l -> (HollowProducerListenerV2) l),
-                l -> l.onCycleSkip(reason));
-
-        return new ProducerStatus.Builder();
-    }
-
-    ProducerStatus.Builder fireCycleStart(long version) {
-        fire(l -> l.onCycleStart(version));
-
-        return new ProducerStatus.Builder().version(version);
-    }
-
-    void fireCycleComplete(ProducerStatus.Builder psb) {
-        ProducerStatus st = psb.build();
-        fire(l -> l.onCycleComplete(st, psb.elapsed(), MILLISECONDS));
-    }
-
-    void fireNoDelta(ProducerStatus.Builder psb) {
-        fire(l -> l.onNoDeltaAvailable(psb.version()));
-    }
-
-    ProducerStatus.Builder firePopulateStart(long version) {
-        fire(l -> l.onPopulateStart(version));
-
-        return new ProducerStatus.Builder().version(version);
-    }
-
-    void firePopulateComplete(ProducerStatus.Builder builder) {
-        ProducerStatus st = builder.build();
-        fire(l -> l.onPopulateComplete(st, builder.elapsed(), MILLISECONDS));
-    }
-
-    ProducerStatus.Builder firePublishStart(long version) {
-        fire(l -> l.onPublishStart(version));
-
-        return new ProducerStatus.Builder().version(version);
-    }
-
-    void firePublishComplete(ProducerStatus.Builder builder) {
-        ProducerStatus status = builder.build();
-        fire(l -> l.onPublishComplete(status, builder.elapsed(), MILLISECONDS));
-    }
-
-    void fireArtifactPublish(PublishStatus.Builder builder) {
-        PublishStatus status = builder.build();
-        fire(l -> l.onArtifactPublish(status, builder.elapsed(), MILLISECONDS));
-    }
-
-    ProducerStatus.Builder fireIntegrityCheckStart(HollowProducer.ReadState readState) {
-        long version = readState.getVersion();
-        fire(l -> l.onIntegrityCheckStart(version));
-
-        return new ProducerStatus.Builder().version(readState);
-    }
-
-    void fireIntegrityCheckComplete(ProducerStatus.Builder psb) {
-        ProducerStatus st = psb.build();
-        fire(l -> l.onIntegrityCheckComplete(st, psb.elapsed(), MILLISECONDS));
-    }
-
-    ProducerStatus.Builder fireValidationStart(HollowProducer.ReadState readState) {
-        long version = readState.getVersion();
-        fire(l -> l.onValidationStart(version));
-
-        // HollowValidationListener and HollowProducerListener both have the same
-        // method signature for onValidationStart. If an instance implements both
-        // interfaces and is registered as both then the even is only fired once
-        // @@@ Arguably even if the methods are aliased calling twice would be
-        // consistent with validation completion.
-
-        fire(hollowValidationListeners.stream()
-                        // Ok to use contains with an instance whose class differs from collection's type
-                        .filter(l -> !listeners.contains(l)),
-                l -> l.onValidationStart(version));
-
-        fire(validationStatusListeners,
-                l -> l.onValidationStatusStart(version));
-
-        return new ProducerStatus.Builder().version(readState);
-    }
-
-    void fireValidationComplete(
-            ProducerStatus.Builder psb, Validators.ValidationStatus s, AllValidationStatusBuilder valStatusBuilder) {
-        ProducerStatus st = psb.build();
-        fire(l -> l.onValidationComplete(st, psb.elapsed(), MILLISECONDS));
-
-        AllValidationStatus valStatus = valStatusBuilder.build();
-        fire(hollowValidationListeners, l -> l.onValidationComplete(valStatus, psb.elapsed(), MILLISECONDS));
-
-        fire(validationStatusListeners,
-                l -> l.onValidationStatusComplete(s, st.getVersion(), psb.elapsed(), MILLISECONDS));
-    }
-
-    ProducerStatus.Builder fireAnnouncementStart(HollowProducer.ReadState readState) {
-        long version = readState.getVersion();
-        fire(l -> l.onAnnouncementStart(version));
-
-        return new ProducerStatus.Builder().version(readState);
-    }
-
-    void fireAnnouncementComplete(ProducerStatus.Builder psb) {
-        ProducerStatus st = psb.build();
-        fire(l -> l.onAnnouncementComplete(st, psb.elapsed(), MILLISECONDS));
-    }
-
     void fireIncrementalCycleComplete(
             long version, long recordsAddedOrModified, long recordsRemoved,
             Map<String, Object> cycleMetadata) {
@@ -290,7 +265,8 @@ final class ListenerSupport {
         // results in an effectively meaningless elasped time.
         IncrementalCycleStatus.Builder icsb = new IncrementalCycleStatus.Builder()
                 .success(version, recordsAddedOrModified, recordsRemoved, cycleMetadata);
-        fire(incrementalCycleListeners, l -> l.onCycleComplete(icsb.build(), icsb.elapsed(), MILLISECONDS));
+        fire(incrementalCycleListeners,
+                l -> l.onCycleComplete(icsb.build(), icsb.elapsed(), MILLISECONDS));
     }
 
     void fireIncrementalCycleFail(
@@ -298,7 +274,7 @@ final class ListenerSupport {
             Map<String, Object> cycleMetadata) {
         IncrementalCycleStatus.Builder icsb = new IncrementalCycleStatus.Builder()
                 .fail(cause, recordsAddedOrModified, recordsRemoved, cycleMetadata);
-        fire(incrementalCycleListeners, l -> l.onCycleFail(icsb.build(), icsb.elapsed(), MILLISECONDS));
+        fire(incrementalCycleListeners,
+                l -> l.onCycleFail(icsb.build(), icsb.elapsed(), MILLISECONDS));
     }
-
 }

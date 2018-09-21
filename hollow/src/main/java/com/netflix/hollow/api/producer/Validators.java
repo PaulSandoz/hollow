@@ -4,7 +4,6 @@ import com.netflix.hollow.api.producer.validation.AllValidationStatus;
 import com.netflix.hollow.api.producer.validation.SingleValidationStatus;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EventListener;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +21,8 @@ public class Validators {
     public enum ValidationResultType {
         /**
          * The validation passed.
-         *
          */
-         // @@@ Skipping might be consired a sub-state of PASSED with details in ValidationResult
+        // @@@ Skipping might be consired a sub-state of PASSED with details in ValidationResult
         PASSED,
         /**
          * The validation failed.
@@ -174,7 +172,7 @@ public class Validators {
      */
     // Any exception thrown will result in a ValidationResult instance with that exception
     // A validator should return a result with an error+exception if more information should be produced
-    public interface ValidatorListener extends EventListener {
+    public interface ValidatorListener extends HollowProducerListeners.HollowProducerEventListener {
         /**
          * Gets the name of the validator.
          *
@@ -199,12 +197,12 @@ public class Validators {
      * (with the same order in which validators were executed).
      */
     public static final class ValidationStatus {
-        private final boolean passed;
         private final List<ValidationResult> results;
+        private final boolean passed;
 
-        ValidationStatus(List<ValidationResult> results) {
-            this.passed = results.stream().allMatch(ValidationResult::isPassed);
-            this.results = Collections.unmodifiableList(results);
+        public ValidationStatus(List<ValidationResult> results) {
+            this.results = Collections.unmodifiableList(new ArrayList<>(results));
+            this.passed = this.results.stream().allMatch(ValidationResult::isPassed);
         }
 
         public boolean isPassed() {
@@ -222,8 +220,8 @@ public class Validators {
     public static final class ValidationStatusException extends RuntimeException {
         private final ValidationStatus status;
 
-        ValidationStatusException(ValidationStatus status) {
-            super("One or more validations failed. Please check individual failures.");
+        public ValidationStatusException(ValidationStatus status, String message) {
+            super(message);
 
             this.status = Objects.requireNonNull(status);
             assert !status.isPassed();
@@ -237,7 +235,7 @@ public class Validators {
     /**
      * A listener of validation status start and complete events.
      */
-    public interface ValidationStatusListener extends EventListener {
+    public interface ValidationStatusListener extends HollowProducerListeners.HollowProducerEventListener {
         void onValidationStatusStart(long version);
 
         void onValidationStatusComplete(ValidationStatus status, long version, long elapsed, TimeUnit unit);
