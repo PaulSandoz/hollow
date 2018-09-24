@@ -76,7 +76,7 @@ public class ObjectModificationValidatorNew<A extends HollowAPI, T extends Hollo
 
     @Override
     public Validators.ValidationResult onValidate(ReadState readState) {
-        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.name(this)
+        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.from(this)
                 .detail("Typename", typeName);
 
         HollowTypeReadState typeState = readState.getStateEngine().getTypeState(typeName);

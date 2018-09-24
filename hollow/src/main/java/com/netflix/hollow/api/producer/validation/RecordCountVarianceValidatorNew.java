@@ -75,7 +75,7 @@ public class RecordCountVarianceValidatorNew implements Validators.ValidatorList
 
     @Override
     public Validators.ValidationResult onValidate(ReadState readState) {
-        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.name(this);
+        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.from(this);
         vrb.detail(ALLOWABLE_VARIANCE_PERCENT_NAME, allowableVariancePercent)
                 .detail(DATA_TYPE_NAME, typeName);
 

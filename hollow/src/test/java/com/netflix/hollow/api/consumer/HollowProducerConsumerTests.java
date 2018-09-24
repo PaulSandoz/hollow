@@ -277,7 +277,7 @@ public class HollowProducerConsumerTests {
                         return "Test validator";
                     }
                     @Override public Validators.ValidationResult onValidate(ReadState readState) {
-                        return Validators.ValidationResult.name(this).failed("Expected to fail!");
+                        return Validators.ValidationResult.from(this).failed("Expected to fail!");
                     }
                 })
                 .build();
@@ -330,9 +330,9 @@ public class HollowProducerConsumerTests {
 
                     @Override public Validators.ValidationResult onValidate(ReadState readState) {
                         if(++counter == 2) {
-                            return Validators.ValidationResult.name(this).failed("Expected to fail!");
+                            return Validators.ValidationResult.from(this).failed("Expected to fail!");
                         } else {
-                            return Validators.ValidationResult.name(this).passed();
+                            return Validators.ValidationResult.from(this).passed();
                         }
                     }
                 })

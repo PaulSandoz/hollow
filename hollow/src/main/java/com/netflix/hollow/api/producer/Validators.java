@@ -22,7 +22,7 @@ public class Validators {
         /**
          * The validation passed.
          */
-        // @@@ Skipping might be consired a sub-state of PASSED with details in ValidationResult
+        // @@@ Skipping might be considered a sub-state of PASSED with details in ValidationResult
         PASSED,
         /**
          * The validation failed.
@@ -35,7 +35,7 @@ public class Validators {
     }
 
     /**
-     * A result of a {@link ValidatorListener}.
+     * The result of validation performed by a {@link ValidatorListener validator}.
      */
     public static final class ValidationResult {
         private final ValidationResultType type;
@@ -54,63 +54,136 @@ public class Validators {
                 throw new IllegalArgumentException();
             }
             // @@@ For the moment allow a throwable to be associated with FAILED state
+            // This is for compatibility with HollowProducer.Validator.ValidationException
             if (type == ValidationResultType.PASSED && ex != null) {
                 throw new IllegalArgumentException();
             }
 
-            this.name = Objects.requireNonNull(name);
-            this.type = Objects.requireNonNull(type);
+            assert name != null; // builder checks
+            this.name = name;
+            this.type = type;
+            assert type != null; // builder ensures
             this.ex = ex;
             this.message = message;
             this.details = Collections.unmodifiableMap(details);
         }
 
+        /**
+         * Returns the validation result type.
+         *
+         * @return the validation result type
+         */
         public ValidationResultType getResultType() {
             return type;
         }
 
+        /**
+         * Returns the name of the validation performed.
+         *
+         * @return the name of the validation performed
+         */
         public String getName() {
             return name;
         }
 
+        /**
+         * Returns the {@code Throwable} associated with a validator that
+         * failed with an unexpected {@link ValidationResultType#ERROR error}.
+         *
+         * @return the {@code Throwable} associated with an erroneous validator, otherwise
+         * {@code null}
+         */
         public Throwable getThrowable() {
             return ex;
         }
 
+        /**
+         * Returns a message associated with the validation.
+         *
+         * @return a message associated with the validation. may be {@code null}
+         */
         public String getMessage() {
             return message;
         }
 
+        /**
+         * Returns details associated with the validation.
+         *
+         * @return details associated with the validation. The details are unmodifiable and may be empty.
+         */
         public Map<String, String> getDetails() {
             return details;
         }
 
+        /**
+         * Returns true if validation passed, otherwise {@code false}.
+         *
+         * @return true if validation passed, otherwise {@code false}
+         */
         public boolean isPassed() {
             return type == ValidationResultType.PASSED;
         }
 
-        public static ValidationResultBuilder name(ValidatorListener v) {
-            return name(v.getName());
+        /**
+         * Initiates the building of a result from a validation listener.
+         * The {@link ValidationResult#getName name} of the validation result with be
+         * set to the {@link ValidatorListener#getName name} of the validator
+         *
+         * @param v the validation listener
+         * @return the validation builder
+         * @throws NullPointerException if {@code v} is {@code null}
+         */
+        public static ValidationResultBuilder from(ValidatorListener v) {
+            return from(v.getName());
         }
 
-        public static ValidationResultBuilder name(String name) {
+        /**
+         * Initiates the building of a result from a name.
+         *
+         * @param name the validation result
+         * @return the validation builder
+         * @throws NullPointerException if {@code name} is {@code null}
+         */
+        public static ValidationResultBuilder from(String name) {
             return new ValidationResultBuilder(name);
         }
 
+        /**
+         * A builder of a {@link ValidationResult}.
+         * <p>
+         * The builder may be reused after it has built a validation result, but the details will be reset
+         * to contain no entries.
+         */
         static public class ValidationResultBuilder {
             private final String name;
             private Map<String, String> details;
 
             ValidationResultBuilder(String name) {
-                this.name = name;
+                this.name = Objects.requireNonNull(name);
                 this.details = new HashMap<>();
             }
 
+            /**
+             * Sets a detail.
+             *
+             * @param name the detail name
+             * @param value the detail value, which will be converted to a {@code String}
+             * using {@link String#valueOf(Object)}
+             * @return the validation builder
+             * @throws NullPointerException if {@code name} or {@code value} are {@code null}
+             */
             public ValidationResultBuilder detail(String name, Object value) {
+                Objects.requireNonNull(name);
+                Objects.requireNonNull(value);
                 details.put(name, String.valueOf(value));
                 return this;
             }
 
+            /**
+             * Builds a result that has {@link ValidationResultType#PASSED passed} with no message.
+             *
+             * @return a validation result that has passed.
+             */
             public ValidationResult passed() {
                 return new ValidationResult(
                         ValidationResultType.PASSED,
@@ -121,6 +194,12 @@ public class Validators {
                 );
             }
 
+            /**
+             * Builds a result that has {@link ValidationResultType#PASSED passed} with a message.
+             *
+             * @param message the message, may be {@code null}
+             * @return a validation result that has passed.
+             */
             public ValidationResult passed(String message) {
                 return build(
                         ValidationResultType.PASSED,
@@ -131,6 +210,13 @@ public class Validators {
                 );
             }
 
+            /**
+             * Builds a result that has {@link ValidationResultType#FAILED failed} with a message.
+             *
+             * @param message the message
+             * @return a validation result that has failed.
+             * @throws NullPointerException if {@code message} is {@code null}
+             */
             public ValidationResult failed(String message) {
                 return build(
                         ValidationResultType.FAILED,
@@ -141,6 +227,17 @@ public class Validators {
                 );
             }
 
+            /**
+             * Builds a result for a validator that produced an unexpected {@link ValidationResultType#ERROR error}
+             * with a {@code Throwable}.
+             *
+             * @param t the {@code Throwable}
+             * @return a validation result for a validator that produced an unexpected error
+             * @throws NullPointerException if {@code t} is {@code null}
+             */
+            // @@@ This could be made package private if moved into producer package
+            // as it is questionable if validators should use this, however for testing
+            // purposes of status listeners its useful.
             public ValidationResult error(Throwable t) {
                 return build(
                         ValidationResultType.FAILED,
@@ -170,8 +267,6 @@ public class Validators {
     /**
      * A validator of {@link com.netflix.hollow.api.producer.HollowProducer.ReadState read state}.
      */
-    // Any exception thrown will result in a ValidationResult instance with that exception
-    // A validator should return a result with an error+exception if more information should be produced
     public interface ValidatorListener extends HollowProducerListeners.HollowProducerEventListener {
         /**
          * Gets the name of the validator.
@@ -183,32 +278,55 @@ public class Validators {
         /**
          * Called when validation is to be performed on read state.
          * <p>
-         * If the a {@link RuntimeException} is thrown by the validator then validation is considered
-         * to fail with the result of a validation {@link ValidationResultType#ERROR error}.
+         * If a {@code RuntimeException} is thrown by the validator then validation is considered
+         * to have failed with an unexpected error.  A {@link ValidationResult} will be built from this
+         * validator as if by a call to {@link ValidationResult.ValidationResultBuilder#error(Throwable)}
+         * with the {@code RuntimeException} as the argument.
          *
          * @param readState the read state.
-         * @return a validation result
+         * @return the validation result
          */
         ValidationResult onValidate(HollowProducer.ReadState readState);
     }
 
     /**
-     * The overall status of a sequence of validation results
-     * (with the same order in which validators were executed).
+     * The overall status of a sequence of validation results.
+     * <p>
+     * A status accumulated from the results of validators will be passed to
+     * the {@link ValidationStatusListener validation status} listeners.
+     * If one or more validation results have not passed then that status will also be reported
+     * in a {@link ValidationStatusException} that is thrown and causes the current cycle to fail.
      */
     public static final class ValidationStatus {
         private final List<ValidationResult> results;
         private final boolean passed;
 
+        /**
+         * Creates a new validation status from a list of validation results.
+         *
+         * @param results the validation results
+         * @throws NullPointerException if {@code results} is {@code null}
+         */
         public ValidationStatus(List<ValidationResult> results) {
             this.results = Collections.unmodifiableList(new ArrayList<>(results));
             this.passed = this.results.stream().allMatch(ValidationResult::isPassed);
         }
 
+        /**
+         * Returns true if all validation results have passed, otherwise false if one or more results
+         * failed or a validator was erroneous.
+         *
+         * @return true if all validation results have passed, otherwise false
+         */
         public boolean isPassed() {
             return passed;
         }
 
+        /**
+         * Returns the validation results.
+         *
+         * @return the validation results. The results are unmodifiable.
+         */
         public List<ValidationResult> getResults() {
             return results;
         }
@@ -220,13 +338,29 @@ public class Validators {
     public static final class ValidationStatusException extends RuntimeException {
         private final ValidationStatus status;
 
+        /**
+         * Creates a validation status exception.
+         *
+         * @param status the status
+         * @param message the message
+         * @throws IllegalArgumentException if {@code status} contains results that all passed
+         * @throws NullPointerException if {@code status} is {@code null}
+         */
         public ValidationStatusException(ValidationStatus status, String message) {
             super(message);
 
+            if (status.isPassed())
+                throw new IllegalArgumentException("A validation status exception was created "
+                        + "with a status containing results that all passed");
+
             this.status = Objects.requireNonNull(status);
-            assert !status.isPassed();
         }
 
+        /**
+         * Returns the validation status.
+         *
+         * @return the validation status.
+         */
         public ValidationStatus getValidationStatus() {
             return status;
         }
@@ -236,8 +370,21 @@ public class Validators {
      * A listener of validation status start and complete events.
      */
     public interface ValidationStatusListener extends HollowProducerListeners.HollowProducerEventListener {
+        /**
+         * Called before validation has started.
+         *
+         * @param version the version
+         */
         void onValidationStatusStart(long version);
 
+        /**
+         * Called after validation has completed (all validation listeners have been called).
+         *
+         * @param status the validation status
+         * @param version the version
+         * @param elapsed the time elapsed between this event and {@link #onValidationStatusStart}
+         * @param unit the time unit of elapsed time
+         */
         void onValidationStatusComplete(ValidationStatus status, long version, long elapsed, TimeUnit unit);
     }
 

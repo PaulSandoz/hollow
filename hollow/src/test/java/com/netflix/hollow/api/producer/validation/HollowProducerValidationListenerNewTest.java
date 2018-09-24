@@ -80,16 +80,24 @@ public class HollowProducerValidationListenerNewTest {
     public void testValidationListenerWithOnlyRecordCountValidator() {
         createHollowProducerAndRunCycle("MovieWithPrimaryKey", false);
         assertOnValidationStatus(1, true, true, validationListener.getVersion());
+
         // Expecting only record count validator status
         Validators.ValidationResult validatorStatus = validationListener.getStatus().getResults().get(0);
         Assert.assertNotNull(validatorStatus);
+
         // ValidationStatus builds record validator status based toString of RecordCountValidatorStatus for now.
         Assert.assertEquals(Validators.ValidationResultType.PASSED, validatorStatus.getResultType());
         Assert.assertNull(validatorStatus.getThrowable());
+
         // Record count validator would have skipped validation because the previous record count is 0 in this test.
         // But that status for now is only passed as string through toString method of the validator.
         Assert.assertTrue(validatorStatus.getMessage().contains("MovieWithPrimaryKey"));
         Assert.assertTrue(validatorStatus.getMessage().contains("Previous record count is 0"));
+
+        // Check details
+        Assert.assertTrue(validatorStatus.getName().startsWith(RecordCountVarianceValidatorNew.class.getName()));
+        Assert.assertEquals("MovieWithPrimaryKey", validatorStatus.getDetails().get("Typename"));
+        Assert.assertEquals("3.0", validatorStatus.getDetails().get("AllowableVariancePercent"));
     }
 
     private void createHollowProducerAndRunCycle(final String typeName, boolean addPrimaryKeyValidator) {
@@ -219,7 +227,8 @@ public class HollowProducerValidationListenerNewTest {
             this.status = status;
         }
 
-        @Override public void onCycleComplete(ProducerStatus status, long elapsed, TimeUnit unit) {
+        @Override
+        public void onCycleComplete(ProducerStatus status, long elapsed, TimeUnit unit) {
         }
 
         public long getCycleVersion() {

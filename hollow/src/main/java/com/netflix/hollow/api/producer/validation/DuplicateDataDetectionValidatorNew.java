@@ -84,7 +84,7 @@ public class DuplicateDataDetectionValidatorNew implements Validators.ValidatorL
 
     @Override
     public Validators.ValidationResult onValidate(ReadState readState) {
-        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.name(this);
+        Validators.ValidationResult.ValidationResultBuilder vrb = Validators.ValidationResult.from(this);
         vrb.detail(DATA_TYPE_NAME, dataTypeName);
 
         PrimaryKey primaryKey = null;

@@ -754,7 +754,7 @@ public class HollowProducer {
                         try {
                             return v.onValidate(readState);
                         } catch (RuntimeException e) {
-                            return Validators.ValidationResult.name(v).error(e);
+                            return Validators.ValidationResult.from(v).error(e);
                         }
                     })
                     .collect(toList());
