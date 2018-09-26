@@ -287,6 +287,13 @@ public class Validators {
          * @return the validation result
          */
         ValidationResult onValidate(HollowProducer.ReadState readState);
+
+        // @@@ If we want to compose so a validator can aggregate multiple validators
+        // then this default method could be added, which is then called during the validation status
+        // cycle
+//        default List<ValidationResult> onComposedValidate(HollowProducer.ReadState readState) {
+//            return Collections.singletonList(onValidate(readState));
+//        }
     }
 
     /**
