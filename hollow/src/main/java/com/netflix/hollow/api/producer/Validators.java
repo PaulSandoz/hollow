@@ -267,6 +267,7 @@ public class Validators {
     /**
      * A validator of {@link com.netflix.hollow.api.producer.HollowProducer.ReadState read state}.
      */
+    // @@@ This is more active and like a handler with a specification contract
     public interface ValidatorListener extends HollowProducerListeners.HollowProducerEventListener {
         /**
          * Gets the name of the validator.

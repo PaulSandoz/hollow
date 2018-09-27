@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
  *
  */
 @Deprecated
+// This is equivalent to Validators.ValidationStatusListener
 public interface HollowValidationListener extends HollowProducerListeners.HollowProducerEventListener {
     // TODO(hollow3): expose structured validation result instead of relying on toString of a Validator
     // TODO(hollow3): fire start/complete callbacks as each validator is run in addition to the
