@@ -1137,11 +1137,13 @@ public class HollowProducer {
             return (B) this;
         }
 
+        @Deprecated
         public B withValidator(HollowProducer.Validator validator) {
             this.validators.add(validator);
             return (B) this;
         }
 
+        @Deprecated
         public B withValidators(HollowProducer.Validator... validators) {
             for (Validator validator : validators) {
                 this.validators.add(validator);
@@ -1161,6 +1163,7 @@ public class HollowProducer {
             return (B) this;
         }
 
+        @Deprecated
         public B withValidationListeners(HollowValidationListener... listeners) {
             for (HollowValidationListener listener : listeners) {
                 this.validationListeners.add(listener);
