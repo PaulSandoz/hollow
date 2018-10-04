@@ -1,14 +1,36 @@
 package com.netflix.hollow.api.producer;
 
+import static java.util.stream.Collectors.toList;
+
+import java.util.Collection;
 import java.util.EventListener;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
+/**
+ * Temporary enclosing class for the new event listener types
+ */
 public final class HollowProducerListeners {
     private HollowProducerListeners() {
     }
 
-    public interface HollowProducerEventListener extends EventListener {
+    static final Collection<Class<? extends HollowProducerEventListener>> LISTENERS =
+            Stream.of(DataModelInitializationListener.class,
+                    RestoreListener.class,
+                    CycleListener.class,
+                    PopulateListener.class,
+                    PublishListener.class,
+                    IntegrityCheckListener.class,
+                    AnnouncementListener.class,
+                    Validators.ValidatorListener.class,
+                    Validators.ValidationStatusListener.class)
+                    .distinct().collect(toList());
 
+    static boolean isValidListener(HollowProducerEventListener l) {
+        return LISTENERS.stream().anyMatch(c -> c.isInstance(l));
+    }
+
+    public interface HollowProducerEventListener extends EventListener {
     }
 
     public interface DataModelInitializationListener extends HollowProducerEventListener {
@@ -18,6 +40,9 @@ public final class HollowProducerListeners {
         void onProducerInit(long elapsed, TimeUnit unit);
     }
 
+    /**
+     * A listener of restore events associated with the producer restore stage.
+     */
     public interface RestoreListener extends HollowProducerEventListener {
         /**
          * Called after the {@code HollowProducer} has restored its data state to the indicated version.
@@ -39,47 +64,77 @@ public final class HollowProducerListeners {
         void onProducerRestoreComplete(HollowProducerListener.RestoreStatus status, long elapsed, TimeUnit unit);
     }
 
-
+    /**
+     * A listener of cycle events associated with the producer cycle stage.
+     * <p>
+     * A cycle listener instance may be registered when building a {@link HollowProducer producer}
+     * (see {@link HollowProducer.Builder#withListener(HollowProducerListeners.HollowProducerEventListener)}} or by
+     * registering on the producer itself
+     * (see {@link HollowProducer#addListener(HollowProducerListeners.HollowProducerEventListener)}.
+     */
     public interface CycleListener extends HollowProducerEventListener {
+        /**
+         * The reasons for a cycle skip event
+         */
         enum CycleSkipReason {
+            /**
+             * The cycle is skipped because the producer is not a primary producer.
+             */
             NOT_PRIMARY_PRODUCER
         }
 
-        // See HollowProducerListenerV2, skiped because not primary producer
-        // Can this be merged in to onCycleComplete with status?
-
         /**
-         * Called when a cycle is skipped.
+         * A receiver of a cycle skip event.  Called when a cycle is skipped.
+         * <p>
+         * If this event occurs then no further cycle events (or any events associated with sub-stages) will occur and
+         * the cycle stage is complete.
+         *
+         * @param reason the reason the cycle is skipped
          */
+        // See HollowProducerListenerV2
+        // Can this be merged in to onCycleComplete with status?
         void onCycleSkip(CycleSkipReason reason);
 
 
-        // This is called just before onCycleStart, can the two be merged with additional arguments?
-
         /**
-         * Indicates that the next state produced will begin a new delta chain.
-         * This will be called prior to the next state being produced either if
+         * A receiver of a new delta chain event.  Called when the next state produced will begin a new delta chain.
+         * Occurs before the {@link #onCycleStart(long) cycle start} event.
+         * <p>
+         * This will be called prior to the next state being produced if
          * {@link HollowProducer#restore(long, com.netflix.hollow.api.consumer.HollowConsumer.BlobRetriever)}
          * hasn't been called or the restore failed.
          *
          * @param version the version of the state that will become the first of a new delta chain
          */
+        // This is called just before onCycleStart, can the two be merged with additional arguments?
         void onNewDeltaChain(long version);
 
         /**
-         * Called when the {@code HollowProducer} has begun a new cycle.
+         * A receiver of a cycle start event. Called when the {@code HollowProducer} has begun a new cycle.
          *
-         * @param version Version produced by the {@code HollowProducer} for new cycle about to start.
+         * @param version the version produced by the {@code HollowProducer} for new cycle about to start.
          */
         void onCycleStart(long version);
 
         /**
-         * Called after {@code HollowProducer} has completed a cycle normally or abnormally. A {@code SUCCESS} status indicates that the
-         * entire cycle was successful and the producer is available to begin another cycle.
+         * A receiver of a cycle complete event.  Called after the {@code HollowProducer} has completed a cycle
+         * with success or failure.  Occurs after the {@link #onCycleStart(long) cycle start} event.
+         * <p>
+         * If the cycle is successful then the {@code status} reports
+         * {@link HollowProducerListener.Status#SUCCESS success}.  Success indicates that a new state has been as been
+         * {@link PopulateListener populated},
+         * {@link PublishListener published},
+         * {@link IntegrityCheckListener integrity checked},
+         * {@link Validators.ValidationStatusListener validated}, and
+         * {@link AnnouncementListener announced}.
+         * Alternatively success may also indicate that population resulted in no changes and therefore there is no new
+         * state to publish and announce.  If so a {@link PublishListener#onNoDeltaAvailable(long) no delta available}
+         * event of the {@link PublishListener publisher} stage is be emitted after which the cycle complete event is
+         * emitted.
+         * <p>
+         * If the cycle failed then the {@code status} reports {@link HollowProducerListener.Status#FAIL failure}.
          *
-         * @param status ProducerStatus of this cycle. {@link HollowProducerListener.ProducerStatus#getStatus()} will return {@code SUCCESS}
-         * when the a new data state has been announced to consumers or when there were no changes to the data; it will return @{code FAIL}
-         * when any stage failed or any other failure occured during the cycle.
+         * @param status the status of this cycle.
          * @param elapsed duration of the cycle in {@code unit} units
          * @param unit units of the {@code elapsed} duration
          */

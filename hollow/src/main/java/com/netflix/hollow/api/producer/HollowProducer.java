@@ -227,6 +227,7 @@ public class HollowProducer {
                 targetMaxTypeShardSize, metricsCollector, blobStorageCleaner, singleProducerEnforcer);
     }
 
+    @Deprecated
     protected HollowProducer(
             BlobStager blobStager,
             Publisher publisher,
@@ -247,6 +248,9 @@ public class HollowProducer {
                 targetMaxTypeShardSize, metricsCollector, blobStorageCleaner, singleProducerEnforcer);
     }
 
+    // The only constructor should be that which accepts a builder
+    // This ensures that if the builder modified to include new state that
+    // extended builders will not require modification to pass on that new state
     protected HollowProducer(Builder<?> b) {
         this(b.stager, b.publisher, b.announcer,
                 b.eventListeners, b.validators, b.listeners, b.validationListeners,
@@ -761,7 +765,7 @@ public class HollowProducer {
 
             status = new Validators.ValidationStatus(results);
 
-            if (!status.isPassed()) {
+            if (!status.passed()) {
                 Validators.ValidationStatusException e = new Validators.ValidationStatusException(
                         status, "One or more validations failed. Please check individual failures.");
                 psb.fail(e);
@@ -1125,16 +1129,68 @@ public class HollowProducer {
             return (B) this;
         }
 
+        /**
+         * Register an event listener that will receive events in accordance to the event listener
+         * types that are implemented.
+         *
+         * @param listener the event listener
+         * @return this builder
+         * @throws IllegalArgumentException if the listener does not implement a recognized event listener type
+         */
         public B withListener(HollowProducerListeners.HollowProducerEventListener listener) {
+            if (!HollowProducerListeners.isValidListener(listener))
+                throw new IllegalArgumentException("Listener does not implement a recognized event listener type: " + listener);
             this.eventListeners.add(listener);
             return (B) this;
         }
 
+        /**
+         * Register one or more event listeners each of which will receive events in accordance to the
+         * event listener types that are implemented.
+         *
+         * @param listeners one or more event listeners
+         * @return this builder
+         * @throws IllegalArgumentException if the listener does not implement a recognized event listener type
+         */
         public B withListeners(HollowProducerListeners.HollowProducerEventListener... listeners) {
             for (HollowProducerListeners.HollowProducerEventListener listener : listeners) {
+                if (!HollowProducerListeners.isValidListener(listener))
+                    throw new IllegalArgumentException("Listener does not implement a recognized event listener type: " + listener);
                 this.eventListeners.add(listener);
             }
             return (B) this;
+        }
+
+        /**
+         * Register a validator event listener that will receive a validator event
+         * during the validator stage.
+         *
+         * @apiNote
+         * This method is equivalent to registering the listener with
+         * {@link #withListener(HollowProducerListeners.HollowProducerEventListener)}.
+         *
+         * @param validator the validator listener
+         * @return this builder
+         * @see #withListener(HollowProducerListeners.HollowProducerEventListener)
+         */
+        public B withValidator(Validators.ValidatorListener validator) {
+            return withListener(validator);
+        }
+
+        /**
+         * Register a one or more validator event listeners each of which will receive a validator event
+         * during the validator stage.
+         *
+         * @apiNote
+         * This method is equivalent to registering the listeners with
+         * {@link #withListeners(HollowProducerListeners.HollowProducerEventListener...)}.
+         *
+         * @param validators one or more validator listeners
+         * @return this builder
+         * @see #withListeners(HollowProducerListeners.HollowProducerEventListener...)
+         */
+        public B withValidators(Validators.ValidatorListener... validators) {
+            return withListeners(validators);
         }
 
         @Deprecated

@@ -265,7 +265,12 @@ public class Validators {
     }
 
     /**
-     * A validator of {@link com.netflix.hollow.api.producer.HollowProducer.ReadState read state}.
+     * A validator of {@link com.netflix.hollow.api.producer.HollowProducer.ReadState read state}.  This type is a
+     * listener of a validator event associated with the producer validator stage.
+     * <p>
+     * A validator instance may be registered when building a {@link HollowProducer producer}
+     * (see {@link HollowProducer.Builder#withValidator(ValidatorListener)}} or by registering on the producer itself
+     * (see {@link HollowProducer#addListener(HollowProducerListeners.HollowProducerEventListener)}.
      */
     // @@@ This is more active and like a handler with a specification contract
     public interface ValidatorListener extends HollowProducerListeners.HollowProducerEventListener {
@@ -277,12 +282,12 @@ public class Validators {
         String getName();
 
         /**
-         * Called when validation is to be performed on read state.
+         * A receiver of a validation event.  Called when validation is to be performed on read state.
          * <p>
-         * If a {@code RuntimeException} is thrown by the validator then validation is considered
-         * to have failed with an unexpected error.  A {@link ValidationResult} will be built from this
-         * validator as if by a call to {@link ValidationResult.ValidationResultBuilder#error(Throwable)}
-         * with the {@code RuntimeException} as the argument.
+         * If a {@code RuntimeException} is thrown by the validator then validation has failed with an unexpected error.
+         * A {@link ValidationResult result} will be built from this validator as if by a call to
+         * {@link ValidationResult.ValidationResultBuilder#error(Throwable)} with the {@code RuntimeException} as the
+         * argument.  The validator is considered to have returned that result.
          *
          * @param readState the read state.
          * @return the validation result
@@ -300,10 +305,8 @@ public class Validators {
     /**
      * The overall status of a sequence of validation results.
      * <p>
-     * A status accumulated from the results of validators will be passed to
-     * the {@link ValidationStatusListener validation status} listeners.
-     * If one or more validation results have not passed then that status will also be reported
-     * in a {@link ValidationStatusException} that is thrown and causes the current cycle to fail.
+     * A status accumulated from the results of validators will be passed to registered
+     * {@link ValidationStatusListener validation status} listeners after validation status has completed.
      */
     public static final class ValidationStatus {
         private final List<ValidationResult> results;
@@ -326,8 +329,18 @@ public class Validators {
          *
          * @return true if all validation results have passed, otherwise false
          */
-        public boolean isPassed() {
+        public boolean passed() {
             return passed;
+        }
+
+        /**
+         * Returns true if one or more validation results failed or was erroneous, otherwise false if all results
+         * passed.
+         *
+         * @return true if one or more validation results failed or was erroneous, otherwise false
+         */
+        public boolean failed() {
+            return !passed;
         }
 
         /**
@@ -357,7 +370,7 @@ public class Validators {
         public ValidationStatusException(ValidationStatus status, String message) {
             super(message);
 
-            if (status.isPassed())
+            if (status.passed())
                 throw new IllegalArgumentException("A validation status exception was created "
                         + "with a status containing results that all passed");
 
@@ -375,18 +388,34 @@ public class Validators {
     }
 
     /**
-     * A listener of validation status start and complete events.
+     * A listener of validation status events associated with the producer validation status stage.
+     * <p>
+     * A validation status listener instance may be registered when building a {@link HollowProducer producer}
+     * (see {@link HollowProducer.Builder#withListener(HollowProducerListeners.HollowProducerEventListener)}} or by
+     * registering on the producer itself
+     * (see {@link HollowProducer#addListener(HollowProducerListeners.HollowProducerEventListener)}.
      */
     public interface ValidationStatusListener extends HollowProducerListeners.HollowProducerEventListener {
         /**
-         * Called before validation has started.
+         * A receiver of a validation status start event.  Called when validation has started and before
+         * a {@link ValidatorListener#onValidate(HollowProducer.ReadState) validator} event is emitted to all
+         * registered {@link ValidatorListener validator} listeners.
          *
          * @param version the version
          */
         void onValidationStatusStart(long version);
 
         /**
-         * Called after validation has completed (all validation listeners have been called).
+         * A receiver of a validation status complete event.  Called when validation has completed and after a
+         * {@link ValidatorListener#onValidate(HollowProducer.ReadState) validator} event was emitted to all registered
+         * {@link ValidatorListener validator} listeners.
+         * <p>
+         * The validation {@code status} holds the list validation results accumulated from the calling of all
+         * registered validator listeners.  If validation {@link ValidationStatus#failed() fails} (one or more
+         * validation results failed) then the cycle stage completes with failure and no
+         * {@link com.netflix.hollow.api.producer.HollowProducerListeners.AnnouncementListener announcement} occurs.
+         * The status of the cycle complete event will contain a {@code cause} that is an instance of
+         * {@link ValidationStatusException} holding the validation results reported by the validation {@code status}.
          *
          * @param status the validation status
          * @param version the version
@@ -461,7 +490,7 @@ public class Validators {
             avsb.addSingleValidationStatus(b.build());
         }
 
-        if (s.isPassed()) {
+        if (s.passed()) {
             avsb.success();
         } else {
             avsb.fail();

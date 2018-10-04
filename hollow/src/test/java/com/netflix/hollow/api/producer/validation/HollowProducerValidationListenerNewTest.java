@@ -141,7 +141,7 @@ public class HollowProducerValidationListenerNewTest {
                 "Stats null indicates HollowValidationFakeListener.onValidationComplete() was not called on runCycle.",
                 status);
         Assert.assertEquals(size, status.getResults().size());
-        Assert.assertEquals(passed, status.isPassed());
+        Assert.assertEquals(passed, status.passed());
     }
 
 
