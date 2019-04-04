@@ -16,6 +16,8 @@
  */
 package com.netflix.hollow.core.write.objectmapper.flatrecords;
 
+import static java.util.stream.Collectors.toMap;
+
 import com.netflix.hollow.api.consumer.HollowConsumer;
 import com.netflix.hollow.api.consumer.InMemoryBlobStore;
 import com.netflix.hollow.api.objects.generic.GenericHollowObject;
@@ -32,6 +34,7 @@ import com.netflix.hollow.core.write.objectmapper.HollowPrimaryKey;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.junit.Assert;
 import org.junit.Before;
@@ -67,7 +70,7 @@ public class FlatRecordWriterTests {
         int recSize1 = flatRecordSize(new TypeA(1, "two", "three", "four"));
         int recSize2 = flatRecordSize(new TypeA(1, "two", "three", "four", "three"));
         
-        Assert.assertTrue(recSize2 - recSize1 == 1);
+        Assert.assertTrue(recSize2 - recSize1 == 3);
     }
     
     @Test
@@ -93,6 +96,10 @@ public class FlatRecordWriterTests {
         Assert.assertEquals(2, typeA0.getSet("a4").size());
         Assert.assertTrue(typeA0.getSet("a4").findElement("four") != null);
         Assert.assertTrue(typeA0.getSet("a4").findElement("five") != null);
+        Assert.assertTrue(typeA0.getMap("a5").findKey("four") != null);
+        Assert.assertTrue(typeA0.getMap("a5").findKey("five") != null);
+        Assert.assertTrue(typeA0.getMap("a5").findValue("four") != null);
+        Assert.assertTrue(typeA0.getMap("a5").findValue("five") != null);
 
         Assert.assertEquals(2, typeA1.getInt("a1"));
         Assert.assertEquals("two", typeA1.getString("a2"));
@@ -102,6 +109,10 @@ public class FlatRecordWriterTests {
         Assert.assertTrue(typeA1.getSet("a4").findElement("eight") != null);
         Assert.assertTrue(typeA1.getSet("a4").findElement("é with acute accent") != null);
         Assert.assertTrue(typeA1.getSet("a4").findElement("ten") != null);
+        Assert.assertTrue(typeA1.getMap("a5").findKey("é with acute accent") != null);
+        Assert.assertTrue(typeA1.getMap("a5").findKey("ten") != null);
+        Assert.assertTrue(typeA1.getMap("a5").findValue("é with acute accent") != null);
+        Assert.assertTrue(typeA1.getMap("a5").findValue("ten") != null);
 
         GenericHollowObject typeC0 = new GenericHollowObject(consumer.getStateEngine(), "TypeC", 0);
 
@@ -117,7 +128,7 @@ public class FlatRecordWriterTests {
         typeASchema.addField("a1", FieldType.INT);
         typeASchema.addField("a2", FieldType.STRING);
         typeASchema.addField("a3", FieldType.REFERENCE, "TypeB");
-        typeASchema.addField("a5", FieldType.BYTES);
+        typeASchema.addField("a6", FieldType.BYTES);
         
         HollowObjectSchema typeBSchema = new HollowObjectSchema("TypeB", 2);
         typeBSchema.addField("b1", FieldType.STRING);
@@ -146,13 +157,15 @@ public class FlatRecordWriterTests {
         Assert.assertEquals("two", typeA0.getString("a2"));
         Assert.assertEquals("three", typeA0.getObject("a3").getString("b1"));
         Assert.assertNull(typeA0.getSet("a4"));
-        Assert.assertNull(typeA0.getBytes("a5"));
+        Assert.assertNull(typeA0.getMap("a5"));
+        Assert.assertNull(typeA0.getBytes("a6"));
 
         Assert.assertEquals(2, typeA1.getInt("a1"));
         Assert.assertEquals("two", typeA1.getString("a2"));
         Assert.assertEquals("four", typeA1.getObject("a3").getString("b1"));
         Assert.assertNull(typeA1.getSet("a4"));
-        Assert.assertNull(typeA1.getBytes("a4"));
+        Assert.assertNull(typeA1.getMap("a5"));
+        Assert.assertNull(typeA1.getBytes("a6"));
 
         GenericHollowObject typeC0 = new GenericHollowObject(consumer.getStateEngine(), "TypeC", 0);
 
@@ -188,6 +201,8 @@ public class FlatRecordWriterTests {
         TypeB a3;
         @HollowHashKey(fields="b1")
         Set<TypeB> a4;
+        @HollowHashKey(fields="b1")
+        Map<TypeB, TypeB> a5;
         @HollowInline
         Integer nullablePrimitiveInt;
 
@@ -199,6 +214,8 @@ public class FlatRecordWriterTests {
             for (int i = 0; i < b1s.length; i++) {
                 this.a4.add(new TypeB(b1s[i]));
             }
+            this.a5 = a4.stream().collect(toMap(e -> e, e -> e));
+
             this.nullablePrimitiveInt = null;
         }
     }

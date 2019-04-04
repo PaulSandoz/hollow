@@ -24,6 +24,7 @@ import com.netflix.hollow.core.schema.HollowObjectSchema;
 import com.netflix.hollow.core.schema.HollowObjectSchema.FieldType;
 import com.netflix.hollow.core.schema.HollowSchema;
 import com.netflix.hollow.core.schema.HollowSetSchema;
+import com.netflix.hollow.core.write.HollowHashableWriteRecord;
 import com.netflix.hollow.core.write.HollowListWriteRecord;
 import com.netflix.hollow.core.write.HollowMapWriteRecord;
 import com.netflix.hollow.core.write.HollowObjectWriteRecord;
@@ -297,11 +298,19 @@ public class FlatRecordDumper {
             case LIST: 
                 rec = new HollowListWriteRecord();
                 break;
-            case SET: 
-                rec = new HollowSetWriteRecord();
+            case SET:
+                if (((HollowSetSchema)schema).getHashKey() != null) {
+                    rec = new HollowSetWriteRecord(HollowHashableWriteRecord.HashBehavior.IGNORED_HASHES);
+                } else {
+                    rec = new HollowSetWriteRecord();
+                }
                 break;
-            case MAP: 
-                rec = new HollowMapWriteRecord();
+            case MAP:
+                if (((HollowMapSchema)schema).getHashKey() != null) {
+                    rec = new HollowMapWriteRecord(HollowHashableWriteRecord.HashBehavior.IGNORED_HASHES);
+                } else {
+                    rec = new HollowMapWriteRecord();
+                }
                 break;
             }
             

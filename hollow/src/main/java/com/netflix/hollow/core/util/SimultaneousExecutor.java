@@ -144,7 +144,7 @@ public class SimultaneousExecutor extends ThreadPoolExecutor {
      * @param description brief description used to name created threads; combined with {@code context}
      */
     public SimultaneousExecutor(int numThreads, Class<?> context, String description) {
-        super(numThreads, numThreads, 100, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
+        super(1, 1, 100, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
                 r -> daemonThread(r, context, description));
     }
 

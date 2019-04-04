@@ -86,7 +86,8 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
         ByteData data = ordinalMap.getByteData().getUnderlyingArray();
 
         totalOfMapBuckets = new long[numShards];
-        
+
+        boolean hasHashKey = getSchema().getHashKey() != null;
         for(int i=0;i<=maxOrdinal;i++) {
             if(currentCyclePopulated.get(i) || previousCyclePopulated.get(i)) {
                 long pointer = ordinalMap.getPointerForData(i);
@@ -113,7 +114,9 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
                     if(valueOrdinal > maxValueOrdinal)
                         maxValueOrdinal = valueOrdinal;
 
-                    pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    if(!hasHashKey) {
+                        pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    }
                 }
 
                 totalOfMapBuckets[i & (numShards-1)] += numBuckets;
@@ -143,7 +146,8 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
         ByteData data = ordinalMap.getByteData().getUnderlyingArray();
 
         long totalOfMapBuckets = 0;
-        
+
+        boolean hasHashKey = getSchema().getHashKey() != null;
         for(int i=0;i<=maxOrdinal;i++) {
             if(currentCyclePopulated.get(i)) {
                 long pointer = ordinalMap.getPointerForData(i);
@@ -170,7 +174,9 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
                     if(valueOrdinal > maxValueOrdinal)
                         maxValueOrdinal = valueOrdinal;
 
-                    pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    if(!hasHashKey) {
+                        pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    }
                 }
 
                 totalOfMapBuckets += numBuckets;
@@ -237,15 +243,18 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
                 for(int j=0;j<size;j++) {
                     int keyElementOrdinalDelta = VarInt.readVInt(data, readPointer);
                     readPointer += VarInt.sizeOfVInt(keyElementOrdinalDelta);
-                    int valueElementOrdinal = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(valueElementOrdinal);
-                    int hashedBucket = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(hashedBucket);
-
                     keyElementOrdinal += keyElementOrdinalDelta;
 
-                    if(primaryKeyHasher != null)
+                    int valueElementOrdinal = VarInt.readVInt(data, readPointer);
+                    readPointer += VarInt.sizeOfVInt(valueElementOrdinal);
+
+                    int hashedBucket;
+                    if (primaryKeyHasher == null) {
+                        hashedBucket = VarInt.readVInt(data, readPointer);
+                        readPointer += VarInt.sizeOfVInt(hashedBucket);
+                    } else {
                         hashedBucket = primaryKeyHasher.getRecordHash(keyElementOrdinal) & (numBuckets - 1);
+                    }
 
                     while(entryArray[shardNumber].getElementValue((long)bitsPerMapEntry * (bucketCounter[shardNumber] + hashedBucket), bitsPerKeyElement) != ((1L << bitsPerKeyElement) - 1)) {
                         hashedBucket++;
@@ -404,15 +413,18 @@ public class HollowMapTypeWriteState extends HollowTypeWriteState {
                 for(int j=0;j<size;j++) {
                     int keyElementOrdinalDelta = VarInt.readVInt(data, readPointer);
                     readPointer += VarInt.sizeOfVInt(keyElementOrdinalDelta);
-                    int valueElementOrdinal = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(valueElementOrdinal);
-                    int hashedBucket = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(hashedBucket);
-
                     keyElementOrdinal += keyElementOrdinalDelta;
 
-                    if(primaryKeyHasher != null)
+                    int valueElementOrdinal = VarInt.readVInt(data, readPointer);
+                    readPointer += VarInt.sizeOfVInt(valueElementOrdinal);
+
+                    int hashedBucket;
+                    if (primaryKeyHasher == null) {
+                        hashedBucket = VarInt.readVInt(data, readPointer);
+                        readPointer += VarInt.sizeOfVInt(hashedBucket);
+                    } else {
                         hashedBucket = primaryKeyHasher.getRecordHash(keyElementOrdinal) & (numBuckets - 1);
+                    }
 
                     while(entryArray[shardNumber].getElementValue((long)bitsPerMapEntry * (bucketCounter[shardNumber] + hashedBucket), bitsPerKeyElement) != ((1L << bitsPerKeyElement) - 1)) {
                         hashedBucket++;

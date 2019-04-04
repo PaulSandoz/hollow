@@ -84,6 +84,7 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
 
         totalOfSetBuckets = new long[numShards];
 
+        boolean hasHashKey = getSchema().getHashKey() != null;
         for(int i=0;i<=maxOrdinal;i++) {
             if(currentCyclePopulated.get(i) || previousCyclePopulated.get(i)) {
                 long pointer = ordinalMap.getPointerForData(i);
@@ -104,7 +105,10 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
                     if(elementOrdinal > maxElementOrdinal)
                         maxElementOrdinal = elementOrdinal;
                     pointer += VarInt.sizeOfVInt(elementOrdinalDelta);
-                    pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+
+                    if (!hasHashKey) {
+                        pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    }
                 }
 
                 totalOfSetBuckets[i & (numShards-1)] += numBuckets;
@@ -131,6 +135,7 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
 
         long totalOfSetBuckets = 0;
 
+        boolean hasHashKey = getSchema().getHashKey() != null;
         for(int i=0;i<=maxOrdinal;i++) {
             if(currentCyclePopulated.get(i)) {
                 long pointer = ordinalMap.getPointerForData(i);
@@ -151,7 +156,10 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
                     if(elementOrdinal > maxElementOrdinal)
                         maxElementOrdinal = elementOrdinal;
                     pointer += VarInt.sizeOfVInt(elementOrdinalDelta);
-                    pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+
+                    if (!hasHashKey) {
+                        pointer += VarInt.nextVLongSize(data, pointer);  /// discard hashed bucket
+                    }
                 }
 
                 totalOfSetBuckets += numBuckets;
@@ -216,13 +224,15 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
                 for(int j=0;j<size;j++) {
                     int elementOrdinalDelta = VarInt.readVInt(data, readPointer);
                     readPointer += VarInt.sizeOfVInt(elementOrdinalDelta);
-                    int hashedBucket = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(hashedBucket);
-
                     elementOrdinal += elementOrdinalDelta;
 
-                    if(primaryKeyHasher != null)
+                    int hashedBucket;
+                    if (primaryKeyHasher == null) {
+                        hashedBucket = VarInt.readVInt(data, readPointer);
+                        readPointer += VarInt.sizeOfVInt(hashedBucket);
+                    } else {
                         hashedBucket = primaryKeyHasher.getRecordHash(elementOrdinal) & (numBuckets - 1);
+                    }
 
                     while(elementArray[shardNumber].getElementValue((long)bitsPerElement * (bucketCounter[shardNumber] + hashedBucket), bitsPerElement) != ((1L << bitsPerElement) - 1)) {
                         hashedBucket++;
@@ -376,12 +386,15 @@ public class HollowSetTypeWriteState extends HollowTypeWriteState {
                 for(int j=0;j<size;j++) {
                     int elementOrdinalDelta = VarInt.readVInt(data, readPointer);
                     readPointer += VarInt.sizeOfVInt(elementOrdinalDelta);
-                    int hashedBucket = VarInt.readVInt(data, readPointer);
-                    readPointer += VarInt.sizeOfVInt(hashedBucket);
                     elementOrdinal += elementOrdinalDelta;
 
-                    if(primaryKeyHasher != null)
+                    int hashedBucket;
+                    if (primaryKeyHasher == null) {
+                        hashedBucket = VarInt.readVInt(data, readPointer);
+                        readPointer += VarInt.sizeOfVInt(hashedBucket);
+                    } else {
                         hashedBucket = primaryKeyHasher.getRecordHash(elementOrdinal) & (numBuckets - 1);
+                    }
 
                     while(elementArray[shardNumber].getElementValue((long)bitsPerElement * (bucketCounter[shardNumber] + hashedBucket), bitsPerElement) != ((1L << bitsPerElement) - 1)) {
                         hashedBucket++;

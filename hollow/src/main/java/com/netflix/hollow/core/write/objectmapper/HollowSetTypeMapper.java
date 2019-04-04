@@ -18,6 +18,7 @@ package com.netflix.hollow.core.write.objectmapper;
 
 import com.netflix.hollow.core.schema.HollowSetSchema;
 import com.netflix.hollow.core.util.HollowObjectHashCodeFinder;
+import com.netflix.hollow.core.write.HollowHashableWriteRecord;
 import com.netflix.hollow.core.write.HollowSetTypeWriteState;
 import com.netflix.hollow.core.write.HollowSetWriteRecord;
 import com.netflix.hollow.core.write.HollowTypeWriteState;
@@ -90,12 +91,16 @@ public class HollowSetTypeMapper extends HollowTypeMapper {
 
     private HollowSetWriteRecord copyToWriteRecord(Set<?> s, FlatRecordWriter flatRecordWriter) {
         HollowSetWriteRecord rec = (HollowSetWriteRecord)writeRecord();
+        boolean hasHashKey = schema.getHashKey() != null;
         for(Object o : s) {
             if(o == null) {
                 throw new NullPointerException(String.format(NULL_ELEMENT_MESSAGE, schema));
             }
             int ordinal = flatRecordWriter == null ? elementMapper.write(o) : elementMapper.writeFlat(o, flatRecordWriter);
-            int hashCode = hashCodeFinder.hashCode(elementMapper.getTypeName(), ordinal, o);
+
+            int hashCode = hasHashKey
+                ? 0
+                : hashCodeFinder.hashCode(elementMapper.getTypeName(), ordinal, o);
             rec.addElement(ordinal, hashCode);
         }
         return rec;
@@ -103,7 +108,11 @@ public class HollowSetTypeMapper extends HollowTypeMapper {
 
     @Override
     protected HollowWriteRecord newWriteRecord() {
-        return new HollowSetWriteRecord();
+        if (schema.getHashKey() != null) {
+            return new HollowSetWriteRecord(HollowHashableWriteRecord.HashBehavior.IGNORED_HASHES);
+        } else {
+            return new HollowSetWriteRecord();
+        }
     }
 
     @Override
